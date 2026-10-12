@@ -1,0 +1,15 @@
+{
+  "description": "The team's Octopus extensions",
+  "extensions": [
+    {
+      "path": "extensions/json-explorer"
+    },
+    {
+      "path": "extensions/calendar"
+    },
+    {
+      "path": "extensions/daily"
+    }
+  ],
+  "name": "octopus-extensions"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "JSON Explorer",
+  "description": "Paste JSON and explore it as a tree: search, fold, copy a value's path",
+  "icon": "json",
+  "version": "1.0.0",
+  "author": "Octopus",
+  "sdk": 1,
+  "permissions": {}
+}

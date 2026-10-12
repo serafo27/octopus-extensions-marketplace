@@ -1,0 +1,27 @@
+{
+  "name": "Daily",
+  "description": "Morning board: a greeting and summary, tasks in progress, today's meetings, this week's one-offs, weather and news",
+  "icon": "coffee",
+  "version": "0.3.0",
+  "author": "Serafino D'Angelillo",
+  "sdk": 1,
+  "permissions": {
+    "http": [
+      "https://api.open-meteo.com/v1/",
+      "https://geocoding-api.open-meteo.com/v1/",
+      "https://www.ansa.it/sito/",
+      "https://www.ansa.it/webimages/",
+      "https://feeds.bbci.co.uk/news/",
+      "https://ichef.bbci.co.uk/",
+      "https://hn.algolia.com/api/v1/",
+      "https://www.ilpost.it/feed",
+      "https://www.ilpost.it/wp-content/uploads/"
+    ],
+    "claude": true,
+    "tasks": true,
+    "docs": false,
+    "shared": [
+      "calendar"
+    ]
+  }
+}

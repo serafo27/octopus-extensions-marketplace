@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>JSON Explorer</title>
+    <link rel="stylesheet" href="/__octopus/base.css" />
+    <script src="/__octopus/sdk.js"></script>
+    <style>
+      body { display: flex; height: 100vh; overflow: hidden; }
+      .input { width: 38%; min-width: 280px; display: flex; flex-direction: column; border-right: 1px solid var(--border); }
+      .input textarea { flex: 1; margin: 0 12px 12px; resize: none; font-family: var(--font-mono); font-size: 12px; }
+      .bar { display: flex; gap: 6px; align-items: center; padding: 10px 12px; }
+      .bar .spacer { flex: 1; }
+      .tree-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+      .tree { flex: 1; overflow: auto; padding: 4px 12px 24px; font-family: var(--font-mono); font-size: 12px; line-height: 1.7; }
+      .node { padding-left: 16px; }
+      .row { display: flex; gap: 6px; align-items: baseline; border-radius: var(--radius-xs); padding: 0 4px; white-space: nowrap; }
+      .row:hover { background: var(--bg-hover); }
+      .row .acts { visibility: hidden; margin-left: 8px; font-family: var(--font-ui); }
+      .row:hover .acts { visibility: visible; }
+      .acts button { font-size: 11px; padding: 0 6px; }
+      .tw { width: 12px; color: var(--fg-faint); cursor: pointer; user-select: none; display: inline-block; }
+      .k { color: var(--hl-property, var(--hl-variable, var(--link))); }
+      .s { color: var(--hl-string); white-space: pre-wrap; word-break: break-all; }
+      .n { color: var(--hl-number); }
+      .b { color: var(--hl-keyword); }
+      .meta { color: var(--fg-faint); }
+      mark { background: color-mix(in srgb, var(--warn) 35%, transparent); color: inherit; border-radius: 2px; }
+      .error { color: var(--error); padding: 12px; }
+      .empty { color: var(--fg-muted); padding: 32px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <section class="input">
+      <div class="bar"><b>JSON</b><span class="spacer"></span><button class="ghost" id="format">Format</button><button class="ghost" id="clear">Clear</button></div>
+      <textarea id="src" spellcheck="false" placeholder='Paste JSON here: {"a": [1, 2, {"b": true}]}'></textarea>
+    </section>
+    <section class="tree-pane">
+      <div class="bar">
+        <input id="search" type="search" placeholder="Search keys and values" style="width: 260px" />
+        <span class="muted" id="stats"></span>
+        <span class="spacer"></span>
+        <button class="ghost" id="expand">Expand all</button>
+        <button class="ghost" id="collapse">Collapse all</button>
+      </div>
+      <div class="tree" id="tree"></div>
+    </section>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

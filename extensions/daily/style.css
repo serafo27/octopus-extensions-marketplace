@@ -1,0 +1,1465 @@
+/* Daily. Every colour comes from Octopus's theme: tones and the sky are theme colours mixed into its
+   backgrounds, so the board reads well in dark and light themes alike. */
+
+/* Roboto for the morning note: copied into fonts/ (Apache 2.0), as the page can't load web fonts. */
+@font-face {
+  font-family: "Roboto";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(fonts/roboto-400.woff2) format("woff2");
+}
+@font-face {
+  font-family: "Roboto";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(fonts/roboto-500.woff2) format("woff2");
+}
+@font-face {
+  font-family: "Roboto";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(fonts/roboto-700.woff2) format("woff2");
+}
+
+:root {
+  --note: "Roboto", var(--font-ui);
+  /* One accent (Octopus's), everything else in the theme's greys. */
+  --sun: var(--accent);
+  --violet: var(--fg-muted);
+  --green: var(--fg-muted);
+  --sky-top: var(--bg-editor);
+  --sky-bottom: var(--bg-editor);
+  /* Panels sit a step above the editor's background. */
+  --panel: var(--bg-widget);
+  --panel-line: var(--border);
+  --ink-soft: var(--fg);
+}
+
+body {
+  overflow: auto;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv11", "ss01", "ss03";
+}
+
+#app {
+  max-width: 1220px;
+  margin: 0 auto;
+  padding: 16px 22px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.empty {
+  padding: 48px 0;
+  text-align: center;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+.wx-icon {
+  color: var(--fg-muted);
+}
+.wx-icon .i-sun,
+.wx-icon .i-moon {
+  fill: var(--fg-muted);
+  stroke: var(--fg-muted);
+}
+.wx-icon .i-cloud {
+  fill: var(--bg-widget);
+  stroke: var(--fg-muted);
+}
+.wx-icon .i-drop,
+.wx-icon .i-bolt {
+  stroke: var(--fg-muted);
+  stroke-width: 1.6;
+}
+
+/* Sections are told apart by their icon and title, not by colour. */
+[class*="tone-"] { --tone: var(--fg-muted); }
+
+.badge-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  background: var(--bg-input);
+}
+
+.card {
+  padding: 0;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: var(--radius-lg);
+}
+
+.flag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 7px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--fg-muted);
+  background: var(--bg-input);
+  white-space: nowrap;
+}
+.flag.oneoff {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.flag.reply {
+  color: var(--fg);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.flag.live {
+  color: var(--fg-strong);
+}
+
+/* --- Hero: the sky and the morning note ------------------------------------------------------------ */
+
+.hero {
+  overflow: hidden;
+  padding: 0;
+}
+.sky-wrap {
+  position: relative;
+}
+.sky {
+  position: relative;
+  height: 200px;
+  overflow: hidden;
+  /* The horizon is at 140px whatever the height: unfolded meetings add ground under it. */
+  background: linear-gradient(to bottom, var(--sky-top) 0, var(--sky-bottom) 140px, transparent 140.5px);
+  transition: height 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
+  border-bottom: 1px solid var(--border);
+}
+.sky svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+/* The sky keeps the theme's colours, mixed into its background: the rest of the board stays neutral. */
+.sky {
+  --s-sun: var(--warn);
+  --s-violet: var(--hl-keyword, var(--accent));
+  --s-blue: var(--link);
+  --s-red: var(--error);
+}
+.sky[data-period="night"] {
+  --sky-top: color-mix(in srgb, var(--s-violet) 12%, var(--bg-editor));
+  --sky-bottom: color-mix(in srgb, var(--accent) 16%, var(--bg-editor));
+}
+.sky[data-period="dawn"] {
+  --sky-top: color-mix(in srgb, var(--s-violet) 30%, var(--bg-editor));
+  --sky-bottom: color-mix(in srgb, var(--s-sun) 44%, var(--bg-editor));
+}
+.sky[data-period="morning"] {
+  --sky-top: color-mix(in srgb, var(--s-blue) 34%, var(--bg-editor));
+  --sky-bottom: color-mix(in srgb, var(--s-sun) 18%, color-mix(in srgb, var(--s-blue) 14%, var(--bg-editor)));
+}
+.sky[data-period="midday"] {
+  --sky-top: color-mix(in srgb, var(--s-blue) 46%, var(--bg-editor));
+  --sky-bottom: color-mix(in srgb, var(--s-blue) 20%, var(--bg-editor));
+}
+.sky[data-period="afternoon"] {
+  --sky-top: color-mix(in srgb, var(--s-blue) 36%, var(--bg-editor));
+  --sky-bottom: color-mix(in srgb, var(--s-sun) 28%, var(--bg-editor));
+}
+.sky[data-period="dusk"] {
+  --sky-top: color-mix(in srgb, var(--s-violet) 36%, var(--bg-editor));
+  --sky-bottom: color-mix(in srgb, var(--s-red) 34%, color-mix(in srgb, var(--s-sun) 22%, var(--bg-editor)));
+}
+/* Grey weather pulls the colour out of the sky. */
+.sky[data-weather="cloudy"],
+.sky[data-weather="rain"],
+.sky[data-weather="fog"],
+.sky[data-weather="snow"],
+.sky[data-weather="storm"] {
+  --grey: color-mix(in srgb, var(--fg-faint) 26%, var(--bg-editor));
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--sky-top) 45%, var(--grey)) 0,
+    color-mix(in srgb, var(--sky-bottom) 55%, var(--grey)) 140px,
+    transparent 140.5px
+  );
+}
+
+.sky .sun-path {
+  fill: none;
+  stroke: color-mix(in srgb, var(--fg-strong) 24%, transparent);
+  stroke-dasharray: 2 5;
+}
+.sky .horizon {
+  stroke: color-mix(in srgb, var(--fg-strong) 20%, transparent);
+}
+.sky .tick {
+  stroke: var(--fg-faint);
+}
+.sky .hour {
+  fill: var(--fg-faint);
+  font: 11px var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+.sky .now-line {
+  stroke: color-mix(in srgb, var(--fg-strong) 35%, transparent);
+  stroke-dasharray: 2 3;
+}
+.sky .now-label {
+  fill: var(--fg-strong);
+  font: 600 11px var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+.sky .sun .disc {
+  fill: var(--s-sun);
+}
+.sky .sun .glow {
+  fill: var(--s-sun);
+  opacity: 0.22;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: breathe 5s ease-in-out infinite;
+}
+.sky .moon .disc {
+  fill: color-mix(in srgb, var(--fg-strong) 85%, var(--s-sun));
+}
+.sky .moon .bite {
+  fill: var(--sky-top);
+}
+.sky .moon .glow {
+  fill: var(--fg-strong);
+  opacity: 0.07;
+}
+.sky .bar {
+  fill: color-mix(in srgb, var(--fg-muted) 70%, transparent);
+}
+.sky .bar.oneoff {
+  fill: var(--accent);
+}
+.sky .bar.current {
+  fill: var(--s-sun);
+}
+.sky .bar.past {
+  opacity: 0.35;
+}
+.sky .bar.declined {
+  fill: none;
+  stroke: var(--fg-faint);
+  stroke-dasharray: 2 2;
+}
+.sky .strip {
+  fill: transparent;
+  cursor: pointer;
+}
+.sky .day:focus-visible {
+  outline: none;
+}
+.sky .day:focus-visible .strip {
+  fill: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.sky .grid {
+  stroke: color-mix(in srgb, var(--border) 70%, transparent);
+}
+.sky .fold-hint {
+  fill: var(--fg-faint);
+  font: 11px var(--font-ui);
+  pointer-events: none;
+}
+/* Unfolded: a block per meeting, its time and name written in. */
+.sky .block rect {
+  fill: color-mix(in srgb, var(--fg-muted) 16%, var(--bg-editor));
+}
+.sky .block .edge {
+  fill: var(--fg-muted);
+}
+.sky .block.oneoff rect {
+  fill: color-mix(in srgb, var(--accent) 22%, var(--bg-editor));
+}
+.sky .block.oneoff .edge {
+  fill: var(--accent);
+}
+.sky .block.current rect {
+  fill: color-mix(in srgb, var(--s-sun) 26%, var(--bg-editor));
+}
+.sky .block.current .edge {
+  fill: var(--s-sun);
+}
+.sky .block.declined rect {
+  fill: none;
+  stroke: var(--fg-faint);
+  stroke-dasharray: 2 2;
+}
+.sky .block.past {
+  opacity: 0.5;
+}
+.sky .block-text {
+  fill: var(--fg-strong);
+  font: 500 12px var(--font-ui);
+}
+.sky .block-time {
+  fill: var(--fg-muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sky {
+    transition: none;
+  }
+}
+.sky .star {
+  fill: var(--fg-strong);
+  animation: twinkle 4s ease-in-out infinite;
+}
+
+/* Clouds: drawn opaque and faded as a whole, so the puffs don't show seams where they overlap. Light
+   in dark themes, white with a grey underside in light ones, heavier in rain, faint at night. */
+.sky {
+  --cloud-hi: var(--fg-strong);
+  --cloud-mid: color-mix(in srgb, var(--fg-strong) 75%, var(--fg-muted));
+  --cloud-lo: var(--fg-muted);
+  --cloud-alpha: 0.4;
+  --cloud-shadow: var(--bg-editor);
+  --cloud-shadow-alpha: 0.35;
+}
+:root[data-theme="light"] .sky {
+  --cloud-hi: var(--bg-editor);
+  --cloud-mid: var(--bg-editor);
+  --cloud-lo: color-mix(in srgb, var(--fg-faint) 35%, var(--bg-editor));
+  --cloud-alpha: 0.95;
+  --cloud-shadow: var(--fg-muted);
+  --cloud-shadow-alpha: 0.18;
+}
+.sky[data-weather="rain"],
+.sky[data-weather="storm"] {
+  --cloud-hi: color-mix(in srgb, var(--fg-muted) 80%, var(--fg-strong));
+  --cloud-mid: var(--fg-muted);
+  --cloud-lo: var(--fg-faint);
+  --cloud-alpha: 0.5;
+}
+.sky[data-period="night"] {
+  --cloud-alpha: 0.16;
+}
+.sky .cloud-hi { stop-color: var(--cloud-hi); }
+.sky .cloud-mid { stop-color: var(--cloud-mid); }
+.sky .cloud-lo { stop-color: var(--cloud-lo); }
+.sky .cloud-body {
+  opacity: var(--cloud-alpha);
+}
+.sky .cloud-shadow {
+  fill: var(--cloud-shadow);
+  opacity: var(--cloud-shadow-alpha);
+}
+.sky .cloud {
+  animation: drift 110s linear infinite;
+}
+.sky .drop {
+  stroke: color-mix(in srgb, var(--s-blue) 55%, transparent);
+  animation: fall 1s linear infinite;
+}
+.sky .flake {
+  fill: color-mix(in srgb, var(--fg-strong) 70%, transparent);
+  animation: snow 5s linear infinite;
+}
+.sky .flash {
+  fill: var(--fg-strong);
+  opacity: 0;
+  animation: flash 9s linear infinite;
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.18; }
+  50% { transform: scale(1.18); opacity: 0.3; }
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 0.2; }
+}
+@keyframes drift {
+  from { transform: translateX(-200px); }
+  to { transform: translateX(var(--w, 1200px)); }
+}
+@keyframes fall {
+  from { transform: translateY(-12px); }
+  to { transform: translateY(144px); }
+}
+@keyframes snow {
+  from { transform: translate(0, -6px); }
+  to { transform: translate(14px, 142px); }
+}
+@keyframes flash {
+  0%, 93%, 95%, 100% { opacity: 0; }
+  94% { opacity: 0.16; }
+}
+
+/* Without motion, the decor stays put: clouds where the seed put them, no rain falling. */
+.still .sky *,
+.sky.still * {
+  animation: none !important;
+}
+.still .sky .cloud,
+.sky.still .cloud {
+  transform: translateX(var(--x, 0));
+}
+.still .sky .drop,
+.still .sky .flake,
+.sky.still .drop,
+.sky.still .flake {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sky *,
+  .story-card img.arrive {
+    animation: none !important;
+  }
+}
+
+.hero-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px 0 18px;
+}
+.has-sky .hero-top {
+  position: absolute;
+  inset: 0 0 auto 0;
+  pointer-events: none;
+}
+.hero-top > * {
+  pointer-events: auto;
+}
+
+.date {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--fg-strong);
+}
+.date .dd {
+  font-size: 34px;
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.date .dm {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  font-weight: 600;
+}
+.has-sky .date,
+.has-sky .hero-wx {
+  text-shadow: none;
+}
+.date .dm .faint {
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.hero-wx {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-strong);
+  font-weight: 600;
+}
+
+.tools {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-sm);
+}
+button.ghost.tool {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 7px;
+  color: var(--fg-muted);
+}
+button.ghost.tool:hover:not(:disabled) {
+  color: var(--fg-strong);
+}
+
+.letter {
+  padding: 6px 28px 24px;
+}
+/* The note and, beside it, the day in four facts. */
+.letter.with-aside {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: 28px;
+  align-items: stretch;
+}
+.letter-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+/* Beside the facts: the note sits in the middle of its space, both ways. */
+.with-aside {
+  align-items: stretch;
+}
+.with-aside .letter-text {
+  justify-content: center;
+}
+.with-aside .story {
+  max-width: 64ch;
+}
+.letter-text .story {
+  margin-inline: auto;
+}
+.glance.beside {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-editor);
+  overflow: hidden;
+}
+.glance.beside .tile {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  padding: 12px 14px;
+  align-items: center;
+}
+.glance.beside .tile + .tile {
+  border-top: 1px solid var(--border);
+}
+.glance.beside .tile-value {
+  font-size: 16px;
+}
+.tile .join {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  flex: none;
+  padding: 3px 10px;
+  font-size: 12px;
+}
+@media (max-width: 860px) {
+  .letter.with-aside {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+}
+.hero:not(.has-sky) .letter {
+  padding-top: 18px;
+}
+.hello {
+  margin: 0 0 10px;
+  font: 500 30px/1.2 var(--note);
+  letter-spacing: -0.01em;
+  color: var(--fg-strong);
+}
+.story {
+  margin: 0;
+  max-width: 66ch;
+  font: 400 16px/1.75 var(--note);
+  letter-spacing: 0.01em;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+.story strong {
+  font-weight: 500;
+  color: var(--fg-strong);
+}
+.letter .by {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+.letter .by.error {
+  color: var(--warn);
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--warn);
+}
+.notice .icon {
+  color: var(--warn);
+}
+.notice.error {
+  border-left-color: var(--error);
+}
+.notice.error .icon {
+  color: var(--error);
+}
+
+/* --- At a glance ----------------------------------------------------------------------------------- */
+
+.glance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+.tile {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  min-width: 0;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--panel-line);
+  background: var(--panel);
+}
+.tile-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.tile-label {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+.tile-value {
+  margin-top: 2px;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--fg-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tile-sub {
+  font-size: 12px;
+  color: var(--fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Panels ---------------------------------------------------------------------------------------- */
+
+.main-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.side-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+@media (max-width: 900px) {
+  .main-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.panel {
+  min-width: 0;
+  overflow: hidden;
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--panel-line);
+}
+.panel-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.panel-title h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+.panel-meta {
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+.panel-body {
+  padding: 10px 16px 16px;
+}
+.empty-note {
+  margin: 6px 0;
+  color: var(--fg-faint);
+}
+
+/* Today: a timeline with a rail */
+
+.allday {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 0 10px;
+}
+.chip {
+  padding: 2px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--fg);
+  font-size: 12px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline {
+  position: relative;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+/* The rail runs behind the dots, between the time and the meeting. */
+.timeline::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 85px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--panel-line);
+}
+.meeting {
+  position: relative;
+  display: grid;
+  grid-template-columns: 72px 28px minmax(0, 1fr) auto;
+  align-items: start;
+  padding: 8px 8px 8px 0;
+  border-radius: var(--radius);
+}
+.meeting .when {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--fg-strong);
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.meeting .when .len {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--fg-faint);
+}
+.rail-dot {
+  justify-self: center;
+  margin-top: 5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 2px solid var(--fg-faint);
+  z-index: 1;
+}
+.meeting.oneoff .rail-dot {
+  border-color: var(--accent);
+}
+.meeting.current .rail-dot {
+  background: var(--sun);
+  border-color: var(--sun);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.meeting .what {
+  min-width: 0;
+}
+.meeting .title {
+  font-size: 13.5px;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meeting.oneoff .title {
+  color: var(--fg-strong);
+  font-weight: 600;
+}
+.meeting .sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+.meeting .where {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.meeting .sub:empty {
+  display: none;
+}
+.meeting .join {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 8px;
+  padding: 3px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+.meeting.current {
+  background: var(--bg-hover);
+}
+.meeting.next .when > span:first-child {
+  color: var(--accent);
+}
+.meeting.past {
+  opacity: 0.5;
+}
+.meeting.past .title {
+  font-weight: 400;
+}
+.meeting.declined .title {
+  text-decoration: line-through;
+}
+.now-mark {
+  position: relative;
+  display: grid;
+  grid-template-columns: 72px 28px minmax(0, 1fr);
+  align-items: center;
+  margin: 2px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--sun);
+}
+.now-mark .rail-dot {
+  grid-column: 2;
+  margin: 0;
+  width: 8px;
+  height: 8px;
+  border: 0;
+  background: var(--sun);
+}
+.now-mark > span:last-child {
+  grid-column: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.now-mark > span:last-child::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* Weather */
+
+.wx-now {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 0 12px;
+}
+.wx-temp {
+  display: flex;
+  flex-direction: column;
+}
+.wx-temp .deg {
+  font-size: 34px;
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--fg-strong);
+}
+.wx-temp .wx-text {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+.wx-temp .wx-text::first-letter {
+  text-transform: uppercase;
+}
+.wx-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1px 10px;
+  margin: 0;
+  justify-self: end;
+  font-size: 12px;
+}
+.wx-facts dt {
+  color: var(--fg-faint);
+}
+.wx-facts dd {
+  margin: 0;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+.hours {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--panel-line);
+}
+.hours li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 0;
+  border-radius: var(--radius);
+}
+.hours li.hour-now {
+  background: var(--bg-hover);
+}
+.hours .hh {
+  font-size: 11px;
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+.hours .ht {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+.rain-bar {
+  display: flex;
+  align-items: flex-end;
+  width: 6px;
+  height: 22px;
+  border-radius: 3px;
+  background: var(--bg-input);
+  overflow: hidden;
+}
+.rain-bar span {
+  width: 100%;
+  background: var(--fg-muted);
+  border-radius: 3px;
+}
+
+/* Changing the city, inside the weather panel */
+
+button.ghost.change-city {
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+.city-picker {
+  margin: 2px 0 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-editor);
+}
+.city-row {
+  display: flex;
+  gap: 6px;
+}
+.city-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border-input, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--fg);
+  font: inherit;
+}
+.city-row input:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.city-results {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+}
+.city-results:empty {
+  display: none;
+}
+button.ghost.city-option {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 6px;
+  text-align: left;
+}
+button.ghost.hero-wx {
+  padding: 4px 8px;
+}
+.hero-city {
+  font-weight: 400;
+  color: var(--fg-muted);
+}
+
+/* Tasks */
+
+.project + .project {
+  margin-top: 10px;
+}
+.project-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+.project-name .faint {
+  font-weight: 400;
+}
+.project-name .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+button.task {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--fg);
+  text-align: left;
+  font: inherit;
+}
+button.task + button.task {
+  margin-top: 4px;
+}
+button.task:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+button.task .title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Priority as a small bar: taller is more urgent. */
+.prio {
+  flex: none;
+  width: 3px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--fg-faint);
+  opacity: 0.6;
+}
+.prio.p1 {
+  height: 11px;
+  background: var(--fg-muted);
+}
+.prio.p2 {
+  height: 14px;
+  background: var(--fg);
+  opacity: 1;
+}
+.prio.p3 {
+  height: 16px;
+  background: var(--fg-strong);
+  opacity: 1;
+}
+
+/* The rest of the week: a column per day */
+
+.days {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+.day {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+.day.has {
+  background: var(--bg-editor);
+}
+.day-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.day-head .dn {
+  font-size: 22px;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  color: var(--fg-strong);
+  font-variant-numeric: tabular-nums;
+}
+.day-head .dw {
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+.week-event {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  border-left: 2px solid var(--accent);
+}
+.we-time {
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+.we-title {
+  font-weight: 600;
+  color: var(--fg-strong);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.day-free {
+  color: var(--fg-faint);
+  font-size: 12px;
+}
+.day-regular {
+  margin-top: auto;
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+
+/* --- News ------------------------------------------------------------------------------------------ */
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0 14px;
+}
+.tab {
+  padding: 4px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+.tab:hover:not(:disabled) {
+  color: var(--fg-strong);
+}
+.tab.on {
+  background: var(--bg-selected);
+  color: var(--fg-strong);
+}
+
+.stories {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 14px;
+}
+.story-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-editor);
+  color: var(--fg);
+  text-decoration: none;
+  transition: background var(--ease), transform var(--ease);
+}
+.story-card:hover {
+  background: var(--bg-hover);
+  color: var(--fg-strong);
+}
+.story-card:hover .pic img {
+  transform: scale(1.03);
+}
+.story-card.lead {
+  grid-column: span 2;
+}
+.pic {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--bg-input);
+}
+.story-card.lead .pic {
+  aspect-ratio: 21 / 9;
+}
+.pic img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+.pic img.arrive {
+  animation: arrive 0.5s ease both;
+}
+@keyframes arrive {
+  from { opacity: 0; }
+}
+.pic-mark {
+  padding: 0 12px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--fg-faint);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+/* Sources share one look; their names say which is which. */
+[class*="src-"] { --src: var(--fg-faint); }
+.story-text {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px 12px;
+}
+.story-src {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+.story-src .faint {
+  font-weight: 400;
+}
+.src-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--src);
+}
+.story-title {
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--fg-strong);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.story-card.lead .story-title {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.story-meta {
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+@media (max-width: 560px) {
+  .story-card.lead {
+    grid-column: auto;
+  }
+}
+
+/* --- Settings -------------------------------------------------------------------------------------- */
+
+.settings-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+.settings-layer .scrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg-editor) 50%, transparent);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.settings {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(340px, 100%);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-widget);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--elevation);
+  transform: translateX(100%);
+  transition: transform 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.settings-layer.open .scrim {
+  opacity: 1;
+}
+.settings-layer.open .settings {
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings,
+  .settings-layer .scrim {
+    transition: none;
+  }
+}
+.settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+.settings-body {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 14px 24px;
+}
+.settings section {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.settings section:last-child {
+  border-bottom: 0;
+}
+.settings h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+.settings .check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 3px 0;
+  cursor: pointer;
+}
+.settings .check input {
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+.settings .check > span {
+  display: flex;
+  flex-direction: column;
+}
+.settings .hint {
+  font-size: 12px;
+  color: var(--fg-faint);
+  margin: 2px 0 0;
+}
+.settings .hint.error {
+  color: var(--error);
+}
+.settings .field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 8px;
+}
+.settings .field > span:first-child {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+.settings input[type="text"] {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--border-input, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--fg);
+  font: inherit;
+}
+.settings input[type="text"]:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.row-input {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+.places {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.places .place {
+  padding: 3px 6px;
+  text-align: left;
+}
+.seg {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+}
+.seg button {
+  padding: 2px 10px;
+  border: 0;
+  background: none;
+  color: var(--fg-muted);
+}
+.seg button.on {
+  background: var(--bg-selected);
+  color: var(--fg-strong);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
