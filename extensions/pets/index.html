@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Pets</title>
+    <link rel="stylesheet" href="/__octopus/base.css" />
+    <link rel="stylesheet" href="style.css" />
+    <script src="/__octopus/sdk.js"></script>
+  </head>
+  <body>
+    <div class="toolbar" id="bar">
+      <button class="primary" id="new">New pet</button>
+      <span id="clock" class="muted mono"></span>
+      <span id="pop" class="muted"></span>
+      <div class="seg" id="tools"></div>
+      <button class="ghost" id="fun" title="Start an activity between pets">Fun</button>
+      <span id="event" class="faint"></span>
+      <span class="spacer"></span>
+      <button class="ghost" id="office" title="Office: projects become desks, and a cat works at a project's PC while its terminals are open">Office</button>
+      <select id="ground-pick" title="Scenery"></select>
+      <div class="seg" id="speed" title="Time speed">
+        <button data-speed="0">Pause</button>
+        <button data-speed="1">1×</button>
+        <button data-speed="5">5×</button>
+        <button data-speed="25">25×</button>
+      </div>
+      <button class="ghost" id="reset" title="Remove every pet and its history">Reset</button>
+    </div>
+    <div id="main">
+      <div id="world">
+        <canvas id="ground" hidden></canvas>
+        <div id="empty" hidden>
+          <p class="muted" id="empty-text">No pets yet.</p>
+          <button class="primary" id="new2">Hatch your first pet</button>
+        </div>
+        <button id="paused" hidden title="Time is paused: pets don't move, age or get hungry">Paused · Resume</button>
+        <div id="heritage" hidden></div>
+      </div>
+      <aside id="side"></aside>
+    </div>
+
+    <dialog id="dlg">
+      <form method="dialog" id="form">
+        <div class="dlg-title">New pet</div>
+        <div class="dlg-body">
+          <div class="preview"><div id="pv-art"></div><div id="pv-text" class="muted"></div></div>
+          <div class="fields">
+            <label>Name</label>
+            <div class="inline"><input id="f-name" maxlength="24" required /><button type="button" class="ghost" id="f-dice" title="Random name">Random</button></div>
+            <label>Animal</label>
+            <select id="f-type"></select>
+            <label>Species</label>
+            <select id="f-species"></select>
+            <label class="custom-row" hidden></label>
+            <input id="f-custom" class="custom-row" maxlength="24" placeholder="Name your species" hidden />
+            <label>Sex</label>
+            <select id="f-sex"><option value="r">Random</option><option value="f">Female</option><option value="m">Male</option></select>
+          </div>
+        </div>
+        <div class="dlg-actions">
+          <button type="button" class="ghost" id="f-random" title="Random animal, species, name and traits">Random pet</button>
+          <button type="button" class="ghost" id="f-reroll" title="Same animal, other characteristics">Reroll traits</button>
+          <span class="spacer"></span>
+          <button type="button" class="ghost" id="f-cancel">Cancel</button>
+          <button type="submit" class="primary" id="f-ok">Lay egg</button>
+        </div>
+      </form>
+    </dialog>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

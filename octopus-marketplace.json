@@ -9,6 +9,9 @@
     },
     {
       "path": "extensions/daily"
+    },
+    {
+      "path": "extensions/pets"
     }
   ],
   "name": "octopus-extensions"
