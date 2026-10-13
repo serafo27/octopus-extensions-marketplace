@@ -1,0 +1,54 @@
+{
+  "name": "Messaging",
+  "description": "WhatsApp, Telegram, Slack and more, as on the web: pin the ones you use as tabs",
+  "icon": "comment-discussion",
+  "version": "0.3.0",
+  "author": "Serafino D'Angelillo",
+  "stage": "beta",
+  "permissions": {
+    "webapp": [
+      {
+        "color": "#25D366",
+        "id": "whatsapp",
+        "name": "WhatsApp",
+        "url": "https://web.whatsapp.com/"
+      },
+      {
+        "color": "#229ED9",
+        "id": "telegram",
+        "name": "Telegram",
+        "url": "https://web.telegram.org/a/"
+      },
+      {
+        "color": "#4A154B",
+        "id": "slack",
+        "name": "Slack",
+        "url": "https://app.slack.com/client"
+      },
+      {
+        "color": "#5865F2",
+        "id": "discord",
+        "name": "Discord",
+        "url": "https://discord.com/app"
+      },
+      {
+        "color": "#0084FF",
+        "id": "messenger",
+        "name": "Messenger",
+        "url": "https://www.messenger.com/"
+      },
+      {
+        "color": "#5059C9",
+        "id": "teams",
+        "name": "Teams",
+        "url": "https://teams.microsoft.com/"
+      },
+      {
+        "color": "#00AC47",
+        "id": "google-chat",
+        "name": "Google Chat",
+        "url": "https://chat.google.com/"
+      }
+    ]
+  }
+}

@@ -12,6 +12,9 @@
     },
     {
       "path": "extensions/pets"
+    },
+    {
+      "path": "extensions/messaging"
     }
   ],
   "name": "octopus-extensions"
