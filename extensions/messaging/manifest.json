@@ -2,7 +2,7 @@
   "name": "Messaging",
   "description": "WhatsApp, Telegram, Slack and more, as on the web: pin the ones you use as tabs",
   "icon": "comment-discussion",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "Serafino D'Angelillo",
   "stage": "beta",
   "permissions": {
