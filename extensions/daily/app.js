@@ -5,9 +5,11 @@
 
 import { renderSky } from "./sky.js";
 import { greeting, localSummary, claudeKey, claudeSummary } from "./summary.js";
-import { weather as getWeather, news as getNews, describe, SOURCES, forget, imageOf, imageNow, findPlaces } from "./services.js";
+import { weather as getWeather, news as getNews, describe, sources, forget, forgetNews, imageOf, imageNow, findPlaces } from "./services.js";
+import { openReader, updateReader } from "./reader.js";
 import { loadSettings, openSettings } from "./settings.js";
 import { icon, weatherIcon } from "./icons.js";
+import { ZONES, moveBlock, stepBlock, enableDrag, dragging } from "./layout.js";
 
 const CALENDAR = "calendar";
 const DAY = 86_400_000;
@@ -29,6 +31,7 @@ const S = {
   weatherError: null,
   news: {}, // id -> { items } | { error }
   newsTab: "all",
+  newsLoading: false,
   claude: null, // { key, text } | { key, loading } | { key, error }
   loading: true,
   risen: false,
@@ -132,17 +135,38 @@ async function loadWeather() {
 
 async function loadNews() {
   if (!S.settings.sections.news) return;
-  const ids = Object.keys(SOURCES).filter((id) => S.settings.news[id]);
+  S.newsLoading = true;
   await Promise.all(
-    ids.map(async (id) => {
+    shownSources().map(async (src) => {
       try {
-        S.news[id] = { items: await getNews(id) };
+        S.news[src.id] = { items: await getNews(src) };
       } catch (e) {
-        S.news[id] = { error: e.message };
+        S.news[src.id] = { error: e.message };
       }
     }),
   );
+  S.newsLoading = false;
+  updateReader();
 }
+
+/** Reads every feed again, past the 20 minutes they're kept for. */
+async function refreshNews() {
+  forgetNews();
+  const done = loadNews();
+  render();
+  await done;
+  render();
+}
+
+/** Every headline of the sources shown, each with its source's id: what the newspaper lists. */
+const allNews = () => shownSources().flatMap((src) => (S.news[src.id]?.items || []).map((x) => ({ ...x, source: src.id })));
+
+function openNews(link) {
+  openReader(link, { items: allNews, sources: shownSources, loading: () => S.newsLoading, refresh: refreshNews });
+}
+
+const shownSources = () => sources(S.settings).filter((src) => S.settings.news[src.id]);
+const sourceOf = (id) => sources(S.settings).find((src) => src.id === id);
 
 /** Board first (tasks and meetings are local and quick), then the outside services as they answer. */
 async function refresh() {
@@ -213,7 +237,7 @@ function longestFree(now, meetings) {
 let skyEl = null;
 
 function render() {
-  if (S.loading) return;
+  if (S.loading || dragging()) return; // a drag redraws the board when it ends
   const now = new Date();
   const sec = S.settings.sections;
   const day = dayData(now);
@@ -222,21 +246,15 @@ function render() {
   if (sec.sky) skyEl ??= h("div", { class: "sky" });
 
   app.classList.toggle("still", !animated());
-  const parts = [
-    hero(now, day),
-    calendarNotice(),
-    // Beside the summary when it's shown; a row of its own when it isn't.
-    sec.glance && !sec.summary && glance(now, day, false),
-    h(
-      "div",
-      { class: "main-grid" },
-      sec.today && todayPanel(now),
-      h("div", { class: "side-stack" }, S.settings.weather && weatherPanel(now), sec.tasks && tasksPanel(day.tasks)),
-    ),
-    sec.week && weekPanel(now, day.week),
-    sec.news && newsPanel(),
-  ];
-  app.replaceChildren(...parts.filter(Boolean)); // the DOM's own replaceChildren would print null
+  app.replaceChildren(
+    ...[
+      hero(now, day),
+      calendarNotice(),
+      // Beside the summary when it's shown; a row of its own when it isn't.
+      sec.glance && !sec.summary && glance(now, day, false),
+      board(now, day),
+    ].filter(Boolean), // the DOM's own replaceChildren would print null
+  );
 
   if (sec.sky) {
     requestAnimationFrame(() => {
@@ -246,7 +264,6 @@ function render() {
         weather: S.weather,
         sky: S.weather ? describe(S.weather.code).sky : "clear",
         animate: animated(),
-        rise: !S.risen,
         expanded: S.skyOpen,
         onToggle: () => {
           S.skyOpen = !S.skyOpen;
@@ -254,9 +271,52 @@ function render() {
           render();
         },
       });
-      S.risen = true;
     });
   }
+}
+
+/** The panels, in the zones the user has put them in (layout.js). */
+function board(now, day) {
+  const sec = S.settings.sections;
+  const make = {
+    today: () => sec.today && todayPanel(now),
+    weather: () => S.settings.weather && weatherPanel(now),
+    tasks: () => sec.tasks && tasksPanel(day.tasks),
+    week: () => sec.week && weekPanel(now, day.week),
+    news: () => sec.news && newsPanel(),
+  };
+  const zones = Object.fromEntries(
+    ZONES.map((z) => [z, h("div", { class: `zone zone-${z}`, "data-zone": z }, S.settings.layout[z].map((id) => make[id]?.() || null))]),
+  );
+  const columns = h("div", { class: "columns" }, zones.left, zones.right);
+  // One column alone takes the whole width, unless a drag needs both as targets (see style.css).
+  columns.classList.toggle("single", !zones.left.childElementCount || !zones.right.childElementCount);
+  columns.classList.toggle("empty", !zones.left.childElementCount && !zones.right.childElementCount);
+  const el = h("div", { class: "board" }, zones.top, columns, zones.bottom);
+  enableDrag(el, {
+    onMove: (id, zone, index) => {
+      moveBlock(S.settings.layout, id, zone, index, shownBlocks(el));
+      saveSettings();
+    },
+    onEnd: render,
+  });
+  return el;
+}
+
+const shownBlocks = (root) => new Set([...root.querySelectorAll("[data-block]")].map((x) => x.dataset.block));
+
+/** The grip's keys: arrows move the panel, and focus follows it to its new place. */
+function onGripKey(e) {
+  const id = e.currentTarget.closest("[data-block]").dataset.block;
+  if (!stepBlock(S.settings.layout, id, e.key, shownBlocks(app))) return;
+  e.preventDefault();
+  saveSettings();
+  render();
+  app.querySelector(`[data-block="${id}"] .grip`)?.focus();
+}
+
+function saveSettings() {
+  octopus.storage.set("settings", S.settings).catch((e) => octopus.toast(`Couldn't save the settings: ${e.message}`, "error"));
 }
 
 function tools() {
@@ -492,7 +552,8 @@ function openCityPicker() {
   };
   const pick = (p) => {
     S.settings.city = p;
-    octopus.storage.set("settings", S.settings).catch((e) => octopus.toast(`Couldn't save the city: ${e.message}`, "error"));
+      S.risen = true;
+    saveSettings();
     S.weather = null;
     S.claude = null;
     close();
@@ -653,7 +714,7 @@ function weekPanel(now, oneOffs) {
 // --- News -----------------------------------------------------------------------------------------
 
 function newsItems() {
-  const ids = Object.keys(SOURCES).filter((id) => S.settings.news[id] && (S.newsTab === "all" || S.newsTab === id));
+  const ids = shownSources().map((src) => src.id).filter((id) => S.newsTab === "all" || S.newsTab === id);
   const n = S.newsTab === "all" ? S.settings.newsCount : S.settings.newsCount * 3;
   const lists = ids.map((id) => (S.news[id]?.items || []).slice(0, n).map((x) => ({ ...x, source: id })));
   // All: take turns between sources, so each gets a place near the top.
@@ -663,19 +724,27 @@ function newsItems() {
 }
 
 function newsPanel() {
-  const ids = Object.keys(SOURCES).filter((id) => S.settings.news[id]);
+  const shown = shownSources();
+  const ids = shown.map((src) => src.id);
   if (!ids.length) return null;
   if (S.newsTab !== "all" && !ids.includes(S.newsTab)) S.newsTab = "all";
   const tabs = h(
     "div",
     { class: "tabs", role: "tablist" },
-    [["all", "All"], ...ids.map((id) => [id, SOURCES[id].name])].map(([id, label]) =>
+    [["all", "All"], ...shown.map((src) => [src.id, src.name])].map(([id, label]) =>
       h("button", { role: "tab", "aria-selected": String(S.newsTab === id), class: S.newsTab === id ? "tab on" : "tab", onclick: () => ((S.newsTab = id), render()) }, label),
     ),
   );
-  const loading = ids.some((id) => !S.news[id]);
+  const loading = S.newsLoading || ids.some((id) => !S.news[id]);
   const errors = ids.filter((id) => S.news[id]?.error && (S.newsTab === "all" || S.newsTab === id));
   const items = newsItems();
+  const actions = h(
+    "div",
+    { class: "panel-tools" },
+    h("button", { class: "ghost tool", title: "Read all the news, newspaper style", "aria-label": "Open the newspaper", onclick: () => openNews(newsItems()[0]?.link) }, icon("book", 14)),
+    h("button", { class: "ghost tool", title: "Add a news source", "aria-label": "Add a source", onclick: () => openSettings(S.settings, onSettings, { focus: "feed" }) }, icon("plus", 14)),
+    h("button", { class: "ghost tool", title: "Read the feeds again", "aria-label": "Refresh the news", disabled: S.newsLoading, onclick: refreshNews }, S.newsLoading ? h("span", { class: "spinner" }) : icon("refresh", 14)),
+  );
   return panel(
     "news",
     "green",
@@ -684,16 +753,17 @@ function newsPanel() {
     loading ? "Loading…" : null,
     [
       tabs,
-      errors.map((id) => h("p", { class: "empty-note" }, `${SOURCES[id].name}: couldn't load it (${S.news[id].error}).`)),
+      errors.map((id) => h("p", { class: "empty-note" }, `${sourceOf(id).name}: couldn't load it (${S.news[id].error}).`)),
       items.length ? h("div", { class: "stories" }, items.map((x, i) => story(x, i === 0))) : !loading && !errors.length && empty("No headlines right now."),
     ],
+    actions,
   );
 }
 
 function story(x, lead) {
-  const src = SOURCES[x.source];
+  const name = sourceOf(x.source)?.name || "";
   const ready = imageNow(x);
-  const pic = h("div", { class: `pic src-${x.source}` }, ready ? h("img", { src: ready, alt: "" }) : h("span", { class: "pic-mark" }, x.source === "hn" ? x.domain : src.name));
+  const pic = h("div", { class: `pic src-${x.source}` }, ready ? h("img", { src: ready, alt: "" }) : h("span", { class: "pic-mark" }, x.source === "hn" ? x.domain : name));
   if (!ready && x.source !== "hn") {
     imageOf(x).then((url) => {
       if (!url || !pic.isConnected) return;
@@ -703,12 +773,12 @@ function story(x, lead) {
   }
   return h(
     "a",
-    { class: lead ? "story-card lead" : "story-card", href: x.link, onclick: (e) => (e.preventDefault(), octopus.openUrl(x.link)) },
+    { class: lead ? "story-card lead" : "story-card", href: x.link, title: "Read it in the newspaper", onclick: (e) => (e.preventDefault(), openNews(x.link)) },
     pic,
     h(
       "div",
       { class: "story-text" },
-      h("span", { class: "story-src" }, h("span", { class: `src-dot src-${x.source}` }), src.name, x.at && !isNaN(x.at) && h("span", { class: "faint" }, ago(x.at))),
+      h("span", { class: "story-src" }, h("span", { class: `src-dot src-${x.source}` }), name, x.at && !isNaN(x.at) && h("span", { class: "faint" }, ago(x.at))),
       h("span", { class: "story-title" }, x.title),
       x.meta && h("span", { class: "story-meta" }, x.meta),
     ),

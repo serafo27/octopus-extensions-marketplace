@@ -76,6 +76,10 @@ await octopus.docs.open(path, { projectId });  // shows it in the project's Docu
 await octopus.storage.set("savedQueries", [...]); // JSON, kept by Octopus for this extension
 const saved = await octopus.storage.get("savedQueries"); // null if never set
 
+// A page of the extension in a window of its own, to keep beside other apps (asked again: it comes forward).
+// The page there has the same SDK; `octopus.window.detached` (and `ready()`'s `detached`) is true in it.
+await octopus.window.open("reader.html", { title: "News", width: 460, height: 780, alwaysOnTop: false });
+octopus.window.close();                       // from inside such a window
 octopus.toast("Copied", "info");              // tones: info, success, error
 octopus.copy(text);                           // to the clipboard
 octopus.openUrl("https://…");                 // in the browser

@@ -1,7 +1,9 @@
 // The board's settings: kept in Octopus's storage for this extension, edited in a panel that slides in
 // from the right. Every change is saved and shown at once.
 
-import { findPlaces, SOURCES } from "./services.js";
+import { findPlaces, probeFeed, sources } from "./services.js";
+import { defaultLayout, normalizeLayout } from "./layout.js";
+import { icon } from "./icons.js";
 
 export const SECTIONS = [
   ["sky", "Sky and timeline"],
@@ -20,10 +22,12 @@ export const DEFAULTS = {
   summaryBy: "local", // local | claude
   weather: true,
   city: { name: "Milan", country: "Italy", lat: 45.4643, lon: 9.1895 },
-  news: { ansa: true, bbc: true, hn: true, ilpost: true },
+  news: { ansa: true, bbc: true, hn: true, ilpost: true }, // source id -> shown, the user's feeds included
+  feeds: [], // the user's own RSS or Atom feeds: [{ id, name, url }]
   newsCount: 4,
   dayEnd: 18, // the hour the working day ends: free time is counted until then
   review: true, // tasks in review count as in progress
+  layout: defaultLayout(), // zone -> panel ids, see layout.js
 };
 
 export async function loadSettings() {
@@ -33,6 +37,8 @@ export async function loadSettings() {
     ...saved,
     sections: { ...DEFAULTS.sections, ...(saved.sections || {}) },
     news: { ...DEFAULTS.news, ...(saved.news || {}) },
+    feeds: Array.isArray(saved.feeds) ? saved.feeds : [],
+    layout: normalizeLayout(saved.layout),
   };
 }
 
@@ -48,8 +54,8 @@ function h(tag, props, ...children) {
   return el;
 }
 
-/** Opens the panel over the board; `change(settings)` runs after each edit. */
-export function openSettings(settings, change) {
+/** Opens the panel over the board; `change(settings)` runs after each edit. `focus: "feed"` starts on adding a feed. */
+export function openSettings(settings, change, { focus } = {}) {
   document.querySelector(".settings-layer")?.remove();
   const save = () => {
     octopus.storage.set("settings", settings).catch((e) => octopus.toast(`Couldn't save the settings: ${e.message}`, "error"));
@@ -128,6 +134,79 @@ export function openSettings(settings, change) {
   };
   cityInput.addEventListener("keydown", (e) => e.key === "Enter" && find());
 
+  // News sources: the built-in ones can be hidden, the user's own feeds removed too.
+  const sourceList = h("div", { class: "sources" });
+  const drawSources = () =>
+    sourceList.replaceChildren(
+      ...sources(settings).map((src) =>
+        h(
+          "div",
+          { class: "source" },
+          check(src.name, () => settings.news[src.id], (v) => (settings.news[src.id] = v), src.custom ? src.url : null),
+          src.custom &&
+            h(
+              "button",
+              {
+                type: "button",
+                class: "ghost remove",
+                title: `Remove ${src.name}`,
+                "aria-label": `Remove ${src.name}`,
+                onclick: () => {
+                  settings.feeds = settings.feeds.filter((f) => f.id !== src.id);
+                  delete settings.news[src.id];
+                  drawSources();
+                  save();
+                },
+              },
+              icon("close", 14),
+            ),
+        ),
+      ),
+    );
+  drawSources();
+
+  const feedInput = h("input", { type: "text", placeholder: "https://example.com/feed.xml", spellcheck: "false", "aria-label": "Feed address" });
+  const feedStatus = h("div", { class: "hint" });
+  const addFeed = async () => {
+    let url = feedInput.value.trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+    try {
+      url = new URL(url).href;
+    } catch {
+      return feedStatus.replaceChildren(h("span", { class: "error" }, "That isn't a web address."));
+    }
+    const known = sources(settings).find((src) => src.url === url);
+    if (known) return feedStatus.replaceChildren(`It's already there, as ${known.name}.`);
+    addButton.disabled = true;
+    feedStatus.replaceChildren(h("span", { class: "spinner" }), " Reading the feed…");
+    try {
+      const feed = await probeFeed(url);
+      const id = `feed-${Date.now().toString(36)}`;
+      const name = (feed.title || new URL(url).hostname.replace(/^www\./, "")).slice(0, 40);
+      settings.feeds = [...settings.feeds, { id, name, url }];
+      settings.news[id] = true;
+      feedInput.value = "";
+      feedStatus.replaceChildren(`Added ${name}, ${feed.items.length} headlines.`);
+      drawSources();
+      save();
+    } catch (e) {
+      // Octopus reaches only the prefixes in manifest.json, and an extension can't add to them itself.
+      if (/isn't in the hosts/.test(e.message)) {
+        const prefix = `${new URL(url).origin}/`;
+        feedStatus.replaceChildren(
+          h("span", { class: "error" }, `Daily can't reach ${new URL(url).host} yet. Add “${prefix}” to permissions.http in manifest.json (Claude Code in this folder can do it), then add the feed again.`),
+          " ",
+          h("button", { type: "button", class: "ghost copy-prefix", onclick: () => (octopus.copy(prefix), octopus.toast("Copied", "info")) }, "Copy"),
+        );
+      } else feedStatus.replaceChildren(h("span", { class: "error" }, `Couldn't add it: ${e.message}`));
+    } finally {
+      addButton.disabled = false;
+    }
+  };
+  const addButton = h("button", { type: "button", onclick: addFeed }, "Add");
+  feedInput.addEventListener("keydown", (e) => e.key === "Enter" && addFeed());
+
   const close = () => {
     layer.classList.remove("open");
     setTimeout(() => layer.remove(), 220);
@@ -177,6 +256,24 @@ export function openSettings(settings, change) {
       h(
         "section",
         {},
+        h("h3", {}, "Layout"),
+        h("p", { class: "hint" }, "Drag a section by its header to move it. Or focus its grip and use the arrow keys."),
+        h(
+          "button",
+          {
+            type: "button",
+            class: "reset-layout",
+            onclick: () => {
+              settings.layout = defaultLayout();
+              save();
+            },
+          },
+          "Reset the layout",
+        ),
+      ),
+      h(
+        "section",
+        {},
         h("h3", {}, "Summary"),
         choice("summaryBy", [["local", "Written here"], ["claude", "Written by Claude"]], () => settings.summaryBy, (v) => (settings.summaryBy = v)),
         h("p", { class: "hint" }, "Claude's takes a few seconds and is written again only when your meetings, tasks or the weather change."),
@@ -192,7 +289,14 @@ export function openSettings(settings, change) {
         "section",
         {},
         h("h3", {}, "News"),
-        Object.entries(SOURCES).map(([id, src]) => check(src.name, () => settings.news[id], (v) => (settings.news[id] = v))),
+        sourceList,
+        h(
+          "div",
+          { class: "field" },
+          h("span", {}, "Add an RSS or Atom feed"),
+          h("div", { class: "row-input" }, feedInput, addButton),
+          feedStatus,
+        ),
         h(
           "div",
           { class: "field" },
@@ -205,7 +309,10 @@ export function openSettings(settings, change) {
   const layer = h("div", { class: "settings-layer" }, h("div", { class: "scrim", onclick: close }), panel);
   document.body.append(layer);
   requestAnimationFrame(() => layer.classList.add("open"));
-  panel.querySelector("input")?.focus();
+  if (focus === "feed") {
+    feedInput.scrollIntoView({ block: "center" });
+    feedInput.focus();
+  } else panel.querySelector("input")?.focus();
 }
 
 const placeName = (p) => [p.name, p.admin && p.admin !== p.name ? p.admin : "", p.country].filter(Boolean).join(", ");

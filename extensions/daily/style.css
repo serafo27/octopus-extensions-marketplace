@@ -675,29 +675,105 @@ button.ghost.tool:hover:not(:disabled) {
 
 /* --- Panels ---------------------------------------------------------------------------------------- */
 
-.main-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-.side-stack {
+/* The board: a row on top, two columns, a row at the bottom (layout.js). Empty zones show only while
+   a panel is dragged, as places to drop it. */
+.board,
+.zone {
   display: flex;
   flex-direction: column;
   gap: 16px;
   min-width: 0;
 }
+.zone:empty,
+.columns.empty {
+  display: none;
+}
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.columns.single {
+  grid-template-columns: minmax(0, 1fr);
+}
 @media (max-width: 900px) {
-  .main-grid {
+  .columns {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+.board.dragging .columns {
+  display: grid;
+}
+@media (min-width: 901px) {
+  .board.dragging .columns.single {
+    grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  }
+}
+.board.dragging .zone {
+  display: flex;
+  min-height: 44px;
+  padding: 4px;
+  margin: -4px;
+  border-radius: var(--radius-lg);
+  outline: 1px dashed var(--border);
+}
+.board.dragging .zone:empty::before {
+  content: "Drop here";
+  margin: auto;
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+.drop-slot {
+  flex: none;
+  min-height: 44px;
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.panel.drag-src {
+  display: none;
+}
+.panel-head[draggable="true"] {
+  cursor: grab;
+}
+.panel-head[draggable="true"]:active {
+  cursor: grabbing;
+}
+/* In the header's left padding, so it takes no room. */
+.panel-head .grip {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 24px;
+  padding: 0;
+  color: var(--fg-faint);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity var(--ease);
+}
+.panel-head .grip .icon {
+  stroke-width: 2.4;
+}
+.panel:hover .grip,
+.panel-head .grip:focus-visible {
+  opacity: 1;
+}
+.panel-head .grip:hover:not(:disabled) {
+  color: var(--fg-strong);
 }
 
 .panel {
   min-width: 0;
   overflow: hidden;
+  container-type: inline-size;
 }
 .panel-head {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1229,6 +1305,12 @@ button.task .title {
 .story-card.lead {
   grid-column: span 2;
 }
+/* In a narrow column the grid has one track: the lead story can't span two. */
+@container (max-width: 470px) {
+  .story-card.lead {
+    grid-column: auto;
+  }
+}
 .pic {
   position: relative;
   aspect-ratio: 16 / 9;
@@ -1432,6 +1514,41 @@ button.task .title {
   gap: 6px;
   width: 100%;
 }
+.sources {
+  display: flex;
+  flex-direction: column;
+}
+.source {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.source .check {
+  flex: 1;
+  min-width: 0;
+}
+.source .check .hint {
+  overflow-wrap: anywhere;
+}
+.source .remove {
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 3px;
+  color: var(--fg-faint);
+}
+.source .remove:hover:not(:disabled) {
+  color: var(--error);
+}
+.settings .hint .error {
+  color: var(--error);
+}
+.settings .hint .spinner {
+  vertical-align: -2px;
+}
+.reset-layout {
+  margin-top: 8px;
+}
 .places {
   display: flex;
   flex-direction: column;
@@ -1462,4 +1579,299 @@ button.task .title {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+.settings .copy-prefix {
+  padding: 0 6px;
+}
+
+/* --- The newspaper (reader.js) ------------------------------------------------------------------- */
+
+.panel-tools {
+  display: flex;
+  gap: 2px;
+}
+.panel-tools .spinner {
+  width: 12px;
+  height: 12px;
+}
+
+.reader-layer {
+  --serif: "New York", "Iowan Old Style", Charter, Georgia, serif;
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-editor);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.reader-layer.open {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reader-layer {
+    transform: none;
+  }
+}
+.reader-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.masthead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex: none;
+}
+.mast-name {
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--fg-strong);
+}
+.mast-date {
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+.reader-tabs {
+  margin: 0;
+  min-width: 0;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+}
+.reader-tabs .tab {
+  flex: none;
+}
+.reader-bar > button.ghost:not(.tool) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.reader-main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+}
+.reader-list {
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  padding: 4px 0;
+}
+.rl-item {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--fg);
+  text-align: left;
+}
+.rl-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.rl-item.on {
+  background: var(--bg-selected);
+  border-left-color: var(--accent);
+}
+.rl-thumb {
+  flex: none;
+  width: 64px;
+  height: 44px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+}
+.rl-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.rl-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.rl-src {
+  display: flex;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+.rl-src .faint {
+  font-weight: 400;
+}
+.rl-title {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--fg-strong);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.reader-article {
+  overflow-y: auto;
+  outline: none;
+}
+.ra-inner {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 28px 28px 56px;
+}
+.ra-kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+.ra-kicker .faint {
+  font-weight: 400;
+}
+.ra-title {
+  margin: 10px 0 8px;
+  font-family: var(--serif);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--fg-strong);
+}
+.ra-meta {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+.ra-standfirst {
+  margin: 8px 0 18px;
+  font-family: var(--serif);
+  font-size: 18px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+.ra-pic {
+  margin: 0 0 22px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--bg-input);
+}
+.ra-pic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ra-body {
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--fg);
+}
+.ra-body p {
+  margin: 0 0 1em;
+}
+.ra-body h2 {
+  margin: 1.4em 0 0.5em;
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--fg-strong);
+}
+.ra-body blockquote {
+  margin: 1.2em 0;
+  padding-left: 16px;
+  border-left: 2px solid var(--accent);
+  color: var(--fg-muted);
+  font-style: italic;
+}
+.ra-body ul {
+  margin: 0 0 1em;
+  padding-left: 1.3em;
+}
+.ra-wait,
+.ra-note {
+  font-family: var(--font-ui);
+  font-size: 13px;
+}
+.ra-note {
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--bg-widget);
+  color: var(--fg-muted);
+}
+.ra-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 760px) {
+  .reader-main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 34% minmax(0, 1fr);
+  }
+  .reader-list {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .mast-date {
+    display: none;
+  }
+  .ra-title {
+    font-size: 24px;
+  }
+}
+.reader-list [hidden] {
+  display: none;
+}
+
+/* The newspaper in a window of its own (reader.html), and in any narrow space: one pane at a time. */
+.reader-layer.detached {
+  transition: none;
+}
+.ra-back {
+  display: none;
+  margin: -8px 0 12px -6px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .reader-bar {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .reader-tabs {
+    order: 10;
+    flex-basis: 100%;
+  }
+  .reader-main {
+    grid-template-rows: none;
+  }
+  .reader-list {
+    border-bottom: 0;
+  }
+  .reader-layer:not(.reading) .reader-article,
+  .reader-layer.reading .reader-list {
+    display: none;
+  }
+  .ra-back {
+    display: inline-flex;
+  }
+  .ra-inner {
+    padding: 20px 18px 40px;
+  }
 }
