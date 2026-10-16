@@ -48,6 +48,7 @@ const PATHS = {
   eye: "M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8zM8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
   more: "M3.5 8h.01M8 8h.01M12.5 8h.01",
   chevronDown: "M4 6l4 4 4-4",
+  bellOff: "M4.5 11.5V7.5a3.5 3.5 0 0 1 5.6-2.8M11.5 7.5v4l1 1h-9M6.8 13.8a1.3 1.3 0 0 0 2.4 0M2.5 2.5l11 11",
 };
 
 /** A cog: eight teeth around a ring, and the hole in the middle. */

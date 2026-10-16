@@ -165,12 +165,13 @@ function miniMonth() {
 }
 
 // The meetings happening now or, when none is, the next one and those overlapping it: a carousel.
+// Not from a muted calendar (its "Mute calendar" option).
 let nextIdx = { sig: "", i: 0 };
 
 function nextGroup(now) {
   const seen = new Set();
   const upcoming = occurrencesIn(now, addDays(now, 1)).filter((o) => {
-    if (o.allDay || o.transparent || o.response === "DECLINED" || +o.end <= +now) return false;
+    if (o.allDay || o.transparent || o.response === "DECLINED" || o.cal.hideInMenuBar || +o.end <= +now) return false;
     const k = `${o.uid}|${+o.start}`; // the same invite in two accounts shows once
     if (seen.has(k)) return false;
     seen.add(k);
@@ -274,8 +275,14 @@ function calendarRow(account, cal) {
   });
   const row = h(
     "div",
-    { class: "cal-row", title: feed?.status === "error" ? feed.error : cal.name },
+    { class: `cal-row${cal.hideInMenuBar ? " muted" : ""}`, title: feed?.status === "error" ? feed.error : cal.name },
     h("label", { class: "cal-label" }, toggle, h("span", { class: "cal-name" }, cal.name)),
+    cal.hideInMenuBar &&
+      h("button", {
+        class: "ghost icon-btn sm cal-muted",
+        title: "Muted: not in the menu bar, Up next, notifications, auto join or other extensions · click to unmute",
+        onclick: () => ((cal.hideInMenuBar = false), saveAccounts(), rerender()),
+      }, icon("bellOff", 12)),
     feed?.status === "loading" && h("span", { class: "spinner sm" }),
     feed?.status === "error" && h("span", { class: "badge error", title: feed.error }, "!"),
     h("button", { class: "ghost icon-btn sm cal-menu", title: "Options", onclick: (e) => calendarMenu(e.currentTarget, account, cal) }, icon("more", 12)),
@@ -301,6 +308,11 @@ function calendarMenu(anchor, account, cal) {
         h("button", { class: `swatch${i === cal.color ? " on" : ""}`, style: { "--c": c }, onclick: () => ((cal.color = i), saveAccounts(), closePopover(), rerender()) }),
       )),
       h("button", { class: "ghost item", onclick: () => { for (const x of S.accounts.flatMap((a) => a.calendars)) x.visible = x.id === cal.id; saveAccounts(); closePopover(); rerender(); } }, icon("eye", 12), " Show only this"),
+      h("button", {
+        class: "ghost item",
+        title: "Leaves the menu bar, Up next, notifications, auto join and what other extensions read; stays in the views",
+        onclick: () => ((cal.hideInMenuBar = !cal.hideInMenuBar), saveAccounts(), closePopover(), rerender()),
+      }, icon("bellOff", 12), cal.hideInMenuBar ? " Unmute calendar" : " Mute calendar"),
       account.kind === "ics" && h("button", { class: "ghost item", onclick: () => (closePopover(), refreshFeed(cal)) }, icon("refresh", 12), " Refresh"),
       account.kind === "ics" && h("button", { class: "ghost item", onclick: () => (octopus.copy(cal.url), octopus.toast("Address copied", "info")) }, icon("copy", 12), " Copy address"),
       feed?.fetchedAt && h("div", { class: "faint item-note" }, `Updated ${format.time(new Date(feed.fetchedAt))}, ${format.dayMonth(new Date(feed.fetchedAt))}`),
@@ -408,7 +420,8 @@ function newEventNow() {
 
 new ResizeObserver(() => S.view === "month" && !S.query && renderView()).observe(view);
 
-// Keep "now" current: the red line, "next up" and past events. A toast as a meeting is about to start.
+// Keep "now" current: the red line, "next up" and past events. A toast as a meeting is about to start
+// (not for a muted calendar).
 const notified = new Set();
 let pointerDown = false;
 window.addEventListener("pointerdown", () => (pointerDown = true), true);
@@ -418,14 +431,47 @@ setInterval(() => {
   const busy = popoverOpen() || modalOpen() || pointerDown || document.activeElement?.matches("input, textarea, select");
   if (ticks++ % 2 === 0 && !busy) render();
   else updateMenuBar();
+  if (S.settings.autoJoin) autoJoin();
   if (!S.settings.notify) return;
   const now = Date.now();
-  for (const o of occurrencesIn(new Date(now), new Date(now + 70_000))) {
-    if (o.allDay || o.response === "DECLINED" || +o.start < now || notified.has(o.key)) continue;
+  const lead = (S.settings.notifyLead ?? 1) * MIN + 10_000; // the timer ticks every 30 s
+  for (const o of occurrencesIn(new Date(now), new Date(now + lead))) {
+    if (o.allDay || o.response === "DECLINED" || o.cal.hideInMenuBar || +o.start < now || +o.start > now + lead || notified.has(o.key)) continue;
     notified.add(o.key);
     octopus.toast(`${o.title} starts at ${format.time(o.start)}${meetingLink(o) ? " · Join from the sidebar" : ""}`, "info");
   }
 }, 30_000);
+
+// Auto join: the chosen minutes before a meeting you accepted (or organize) starts, open its call link as
+// the Join button would; never for a muted calendar. Each invite once, also across reloads (the page
+// reloads on every file save).
+const JOINED_KEY = "calendar:autoJoined";
+function joinedSet() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(JOINED_KEY) || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+function autoJoin() {
+  const now = Date.now();
+  const joined = joinedSet();
+  const lead = (S.settings.autoJoinLead ?? 1) * MIN + 10_000; // the timer ticks every 30 s
+  for (const o of occurrencesIn(new Date(now), new Date(now + lead), { search: false })) {
+    if (o.allDay || o.cal.hideInMenuBar || +o.start < now || +o.start > now + lead) continue;
+    const me = o.account.name.toLowerCase();
+    const mine = o.response === "ACCEPTED" || (o.organizer?.email && o.organizer.email.toLowerCase() === me);
+    const link = mine && meetingLink(o);
+    const k = `${o.uid}|${+o.start}`;
+    if (!link || joined.has(k)) continue;
+    joined.add(k);
+    octopus.openUrl(link);
+    octopus.toast(`Joining ${o.title}`, "info");
+  }
+  try {
+    localStorage.setItem(JOINED_KEY, JSON.stringify([...joined].filter((k) => +k.split("|").pop() > now - DAY)));
+  } catch {}
+}
 setInterval(() => refreshAll(), 15 * 60_000);
 octopus.on("visible", (shown) => shown && !popoverOpen() && render());
 octopus.on("theme", () => updateMenuBar()); // calendar colours are theme colours

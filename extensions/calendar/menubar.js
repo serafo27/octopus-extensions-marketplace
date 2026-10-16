@@ -1,12 +1,12 @@
 // The next meeting in the Mac's menu bar (octopus.statusBar), Notion Calendar style: "[Standup] in 5m",
-// then "[Standup] 5m left". Octopus gets a timeline for the next hours and counts down by itself.
+// then "[Standup] 5m left", for today's meetings only. Octopus gets a timeline for the rest of today
+// and counts down by itself.
 
 import { S, occurrencesIn, meetingLink } from "./store.js";
 import { format, addDays, startOfDay, HOUR, MIN } from "./dates.js";
 
-const AHEAD = 36 * HOUR;
 const TITLE_MAX = 24;
-/** Setting `menuBar`: how long before a meeting it shows; 0 = off, -1 = the next one, however far. */
+/** Setting `menuBar`: how long before a meeting it shows; 0 = off, -1 = the next one today, however far. */
 export const MENU_BAR_OPTIONS = [
   [15, "15 min before"],
   [30, "30 min before"],
@@ -28,11 +28,14 @@ function hexOf(color) {
   return m ? `#${m.slice(1, 4).map((n) => (+n).toString(16).padStart(2, "0")).join("")}` : undefined;
 }
 
-/** Meetings as the sidebar's "next up" counts them: not free, not declined, each invite once. */
+/**
+ * Meetings as the sidebar's "next up" counts them: not free, not declined, each invite once, and not
+ * from a muted calendar (its "Mute calendar" option, `hideInMenuBar`).
+ */
 function meetings(from, to, { allDay = false } = {}) {
   const seen = new Set();
   return occurrencesIn(from, to, { search: false }).filter((o) => {
-    if ((o.allDay && !allDay) || o.transparent || o.response === "DECLINED") return false;
+    if ((o.allDay && !allDay) || o.transparent || o.response === "DECLINED" || o.cal.hideInMenuBar) return false;
     const k = `${o.uid}|${+o.start}`;
     if (seen.has(k)) return false;
     seen.add(k);
@@ -40,8 +43,10 @@ function meetings(from, to, { allDay = false } = {}) {
   });
 }
 
+// Only today's meetings: once the last one ends, the item shows just the day until midnight.
 function timeline(lead, now) {
-  const list = meetings(now, new Date(+now + AHEAD)).filter((o) => +o.end > +now);
+  const today = startOfDay(now);
+  const list = meetings(now, addDays(today, 1)).filter((o) => +o.end > +now);
   const entry = (o, text, from, to) => ({
     text,
     from,
@@ -57,7 +62,6 @@ function timeline(lead, now) {
     return entry(o, `${shortTitle(o.title)} in {remaining}`, from, +o.start);
   });
   // With no meeting to show, the day ("Mon 12"): the item stays, to open the menu.
-  const today = startOfDay(now);
   const days = [0, 1, 2].map((i) => {
     const d = addDays(today, i);
     return { text: `${format.weekdayShort(d)} ${d.getDate()}`, from: +d, to: +addDays(d, 1) };

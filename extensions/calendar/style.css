@@ -305,6 +305,15 @@ button.sm {
 .cal-row:hover .cal-menu {
   opacity: 1;
 }
+.cal-row.muted .cal-name {
+  color: var(--fg-muted);
+}
+.cal-muted {
+  color: var(--fg-faint);
+}
+.cal-muted:hover {
+  color: var(--fg);
+}
 .cal-row .badge.error {
   line-height: 16px;
   padding: 0 5px;

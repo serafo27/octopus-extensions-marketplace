@@ -420,13 +420,44 @@ export function openSettings(anchor) {
       h("label", { class: "check" }, weekends, "Show weekends"),
       h("label", { class: "check" }, toggle("hideDeclined", true), "Show declined events"),
       h("div", { class: "settings-head" }, "Notifications"),
-      h("label", { class: "check" }, toggle("notify", false), "Notify 1 minute before events"),
+      notifySettings(),
+      autoJoinSettings(),
       h("div", { class: "settings-head" }, "Menu bar"),
       menuBarSettings(),
     ),
     { width: 260, prefer: "below" },
   );
 }
+
+/** A boolean setting with how many minutes before an event it acts: a checkbox and a select. */
+function leadSettings(onKey, leadKey, checkLabel, selectLabel, title) {
+  const st = S.settings;
+  const on = h("input", { type: "checkbox", checked: !!st[onKey] });
+  const when = h("select", { disabled: !st[onKey] }, [1, 2, 3, 5, 10].map((v) => h("option", { value: String(v) }, `${v} min before`)));
+  when.value = String(st[leadKey] ?? 1);
+  const apply = () => {
+    st[onKey] = on.checked;
+    st[leadKey] = +when.value;
+    when.disabled = !on.checked;
+    saveSettings();
+    rerender();
+  };
+  on.addEventListener("change", apply);
+  when.addEventListener("change", apply);
+  return h(
+    "div",
+    { class: "form" },
+    h("label", { class: "check", title }, on, checkLabel),
+    h("label", {}, h("span", {}, selectLabel), when),
+  );
+}
+
+/** Notifications: on or off, and how many minutes before an event starts. */
+const notifySettings = () => leadSettings("notify", "notifyLead", "Notify before events", "Notify");
+
+/** Auto join: on or off, and how many minutes before a meeting starts its call link opens. */
+const autoJoinSettings = () =>
+  leadSettings("autoJoin", "autoJoinLead", "Auto join meetings I accepted", "Join", "Opens the call link of meetings you accepted, as the Join button does");
 
 /** The next meeting in the Mac's menu bar: on or off, and from how long before it starts. */
 function menuBarSettings() {

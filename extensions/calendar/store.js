@@ -25,7 +25,7 @@ export const S = {
   accounts: [], // [{ id, name, kind: "local" | "ics", calendars: [{ id, name, color, visible, url }] }]
   local: [], // [{ id, calendarId, title, start, end, allDay, location, description, repeat }]
   feeds: new Map(), // calendarId -> { series, status: "loading" | "ok" | "error", error, fetchedAt }
-  settings: { weekStart: 1, hideWeekends: false, hideDeclined: false, hourHeight: 48, defaultDuration: 60, notify: true },
+  settings: { weekStart: 1, hideWeekends: false, hideDeclined: false, hourHeight: 48, defaultDuration: 60, notify: true, notifyLead: 1, autoJoin: false, autoJoinLead: 1 },
   query: "",
 };
 
@@ -322,7 +322,8 @@ export function meetingLink(o) {
 // --- Shared with other extensions ---------------------------------------------------------------
 
 // The next two weeks of the visible calendars, for extensions allowed to read them (Daily's morning
-// check): `octopus.shared.get("calendar", "events")`. Written only when they change.
+// check): `octopus.shared.get("calendar", "events")`. Written only when they change. A muted calendar
+// (`hideInMenuBar`) isn't shared: neither its events nor its errors.
 const SHARE_DAYS = 14;
 let publishTimer = null;
 let publishedSig = "";
@@ -337,7 +338,7 @@ function publish() {
   if ([...S.feeds.values()].some((f) => f.status === "loading")) return publishSoon();
   const from = startOfDay(new Date());
   const to = new Date(+from + SHARE_DAYS * DAY);
-  const events = occurrencesIn(from, to, { search: false }).map((o) => ({
+  const events = occurrencesIn(from, to, { search: false }).filter((o) => !o.cal.hideInMenuBar).map((o) => ({
     id: o.key,
     title: o.title,
     start: o.start.toISOString(),
@@ -353,7 +354,7 @@ function publish() {
     calendar: o.cal.name,
     account: o.account.name,
   }));
-  const errors = [...S.feeds.entries()].filter(([, f]) => f.status === "error").map(([id, f]) => ({ calendar: findCalendar(id)?.cal.name ?? id, error: f.error }));
+  const errors = [...S.feeds.entries()].filter(([id, f]) => f.status === "error" && !findCalendar(id)?.cal.hideInMenuBar).map(([id, f]) => ({ calendar: findCalendar(id)?.cal.name ?? id, error: f.error }));
   const sig = JSON.stringify([+from, events, errors]);
   if (sig === publishedSig) return;
   publishedSig = sig;
