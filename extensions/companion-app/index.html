@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Companion App</title>
+    <link rel="stylesheet" href="/__octopus/base.css" />
+    <link rel="stylesheet" href="vendor/xterm.css" />
+    <script src="/__octopus/sdk.js"></script>
+    <script src="vendor/xterm.js"></script>
+    <script src="vendor/addon-fit.js"></script>
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <div class="toolbar">
+      <span id="status" class="badge">Starting…</span>
+      <button id="toggle" class="ghost">Stop</button>
+      <label class="check"><input type="checkbox" id="allowInput" /> Allow typing from the phone</label>
+      <span class="grow"></span>
+      <span id="relay" class="faint"></span>
+    </div>
+    <main>
+      <aside>
+        <section class="card">
+          <h3>Pair a phone</h3>
+          <div id="qr" class="qr"></div>
+          <p class="faint small">Scan with the phone's camera, on the same Wi-Fi as this Mac.</p>
+          <div id="urls" class="urls"></div>
+          <button id="rotate" class="ghost small">New pairing code</button>
+          <p class="faint small">A new code signs every paired phone out.</p>
+        </section>
+        <section class="card">
+          <h3>Phones <span id="phonesCount" class="badge success"></span></h3>
+          <div id="phones" class="phones"></div>
+        </section>
+        <section class="card">
+          <h3>Companion sessions</h3>
+          <p class="faint small">Terminals the phone can type into, run by this extension.</p>
+          <div class="row">
+            <select id="project"></select>
+          </div>
+          <div class="row">
+            <button id="newShell" class="ghost">New shell</button>
+            <button id="newClaude" class="primary">New Claude</button>
+          </div>
+          <ul id="sessions" class="list"></ul>
+        </section>
+      </aside>
+      <section class="viewer">
+        <div class="viewer-head">
+          <span id="viewTitle" class="muted">No session open</span>
+          <span class="grow"></span>
+          <button id="closeSession" class="ghost" hidden>End session</button>
+          <button id="forgetSession" class="ghost" hidden>Remove</button>
+        </div>
+        <div id="empty" class="empty">
+          <h3>Companion sessions</h3>
+          <p class="muted">
+            A shell or Claude Code started by this extension, in a project's folder. Unlike Octopus's own terminals,
+            the phone can type into it. Pick one on the left to follow it here and type from this Mac too: phone and Mac
+            share the same session.
+          </p>
+          <p class="faint small">Octopus's terminals are sent to the phone too, read-only: they stay in Octopus's Terminals tab.</p>
+          <div class="row">
+            <button id="emptyShell" class="ghost">New shell</button>
+            <button id="emptyClaude" class="primary">New Claude</button>
+          </div>
+        </div>
+        <div id="term" class="term" hidden></div>
+      </section>
+    </main>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

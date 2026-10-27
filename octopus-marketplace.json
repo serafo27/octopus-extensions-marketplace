@@ -21,6 +21,9 @@
     },
     {
       "path": "extensions/api-explorer"
+    },
+    {
+      "path": "extensions/companion-app"
     }
   ],
   "name": "octopus-extensions"

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#0f1115" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<title>Companion</title>
+<link rel="stylesheet" href="/vendor/xterm.css" />
+<link rel="stylesheet" href="/style.css" />
+<script src="/vendor/xterm.js"></script>
+<script src="/vendor/addon-fit.js"></script>
+</head>
+<body>
+  <!-- Home: every terminal as a live tile -->
+  <section id="home" class="view home">
+    <header class="home-head">
+      <div class="title-row">
+        <h1>Terminals</h1>
+        <span id="conn" class="dot"></span>
+        <span id="host" class="host"></span>
+      </div>
+      <div class="seg" role="tablist" aria-label="Filter">
+        <button role="tab" data-filter="all" aria-selected="true">All <span></span></button>
+        <button role="tab" data-filter="waiting" class="needs" aria-selected="false">Needs you <span></span></button>
+        <button role="tab" data-filter="mine" aria-selected="false">Mine <span></span></button>
+      </div>
+      <div id="banner" class="banner" hidden></div>
+    </header>
+    <main id="grid" class="grid"></main>
+    <p id="empty" class="empty" hidden></p>
+    <button id="fab" class="fab" aria-label="New session">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+  </section>
+
+  <!-- One terminal, full screen -->
+  <section id="view" class="view term-view" hidden>
+    <header class="term-head">
+      <button id="back" class="icon" aria-label="All terminals">
+        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="12" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="12" width="7" height="7" rx="1.5"/><rect x="12" y="12" width="7" height="7" rx="1.5"/></svg>
+      </button>
+      <div class="term-title">
+        <div id="viewTitle"></div>
+        <div id="viewSub"></div>
+      </div>
+      <button id="wrap" class="icon" aria-label="Wrap long lines" aria-pressed="false">
+        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h16M3 11h13a3 3 0 010 6h-4M3 16h5M13.5 15l-2 2 2 2"/></svg>
+      </button>
+      <button id="textSize" class="icon text" aria-label="Text size">Aa</button>
+    </header>
+    <pre id="snapshot" class="snapshot" hidden></pre>
+    <div id="term" class="term" hidden></div>
+    <div id="lock" class="lock" hidden>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5 7V5a3 3 0 016 0v2"/></svg>
+      <span>Octopus terminals are watch-only</span>
+    </div>
+    <div id="controls" class="controls" hidden>
+      <div class="keys" id="keys">
+        <button data-k="esc">Esc</button>
+        <button data-k="tab">Tab</button>
+        <button data-k="ctrlc">^C</button>
+        <button data-k="up">↑</button>
+        <button data-k="down">↓</button>
+        <button data-k="left">←</button>
+        <button data-k="right">→</button>
+        <button data-k="enter">⏎</button>
+        <button data-k="ctrld">^D</button>
+      </div>
+      <form id="send" class="send">
+        <label class="sr" for="line">Command</label>
+        <textarea id="line" rows="1" placeholder="Type a command…" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
+        <button class="primary">Send</button>
+      </form>
+    </div>
+  </section>
+
+  <dialog id="dlg">
+    <form method="dialog" id="dlgForm">
+      <h3>New session</h3>
+      <div class="seg kinds" role="radiogroup" aria-label="Kind">
+        <button type="button" role="radio" data-kind="shell" aria-checked="true">Shell</button>
+        <button type="button" role="radio" data-kind="claude" aria-checked="false">Claude</button>
+        <button type="button" role="radio" data-kind="octo" aria-checked="false">In Octopus</button>
+      </div>
+      <p id="dlgHint" class="hint"></p>
+      <label>Project <select id="dlgProject"></select></label>
+      <label id="dlgAccountRow">Claude account <select id="dlgAccount"></select></label>
+      <label id="dlgPromptRow">Prompt <textarea id="dlgPrompt" rows="4"></textarea></label>
+      <div class="actions">
+        <button value="cancel" formnovalidate>Cancel</button>
+        <button value="ok" class="primary">Start</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

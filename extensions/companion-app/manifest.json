@@ -1,0 +1,28 @@
+{
+  "name": "Companion App",
+  "description": "Follow Octopus's terminals from your phone over Wi-Fi, and run shells and Claude sessions you can type into from it",
+  "icon": "device-mobile",
+  "version": "0.1.0",
+  "author": "Serafino D'Angelillo",
+  "stage": "alpha",
+  "sdk": 1,
+  "permissions": {
+    "claude": true,
+    "docs": false,
+    "http": [
+      "http://127.0.0.1:8765/",
+      "http://127.0.0.1:8766/"
+    ],
+    "shared": [],
+    "tasks": false,
+    "terminals": true,
+    "statusBar": true,
+    "helpers": [
+      {
+        "id": "server",
+        "command": ["python3", "-B", "server.py"],
+        "keepAlive": true
+      }
+    ]
+  }
+}
