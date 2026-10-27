@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Db Viewer</title>
+    <link rel="stylesheet" href="/__octopus/base.css" />
+    <link rel="stylesheet" href="style.css" />
+    <script src="/__octopus/sdk.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar">
+        <div class="toolbar side-head">
+          <input id="filter" type="search" placeholder="Filter tables…" spellcheck="false" />
+          <button class="ghost icon" id="group-env" title="Group connections by environment"></button>
+          <button class="ghost icon" id="new-conn" title="New connection">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M8 3v10M3 8h10" /></svg>
+          </button>
+        </div>
+        <div id="tree"></div>
+        <div id="helper" class="helper"></div>
+      </aside>
+      <div id="vsplit"></div>
+      <main id="main">
+        <div id="tabs"></div>
+        <div id="panes"><div id="welcome"></div></div>
+      </main>
+    </div>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

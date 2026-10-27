@@ -15,6 +15,9 @@
     },
     {
       "path": "extensions/messaging"
+    },
+    {
+      "path": "extensions/db-viewer"
     }
   ],
   "name": "octopus-extensions"

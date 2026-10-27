@@ -1,0 +1,24 @@
+{
+  "name": "Db Viewer",
+  "description": "Browse and query MySQL databases: schema tree, table structure, indexes and keys, a SQL editor with automatic LIMIT, timeouts that kill runaway queries, passwords in the Keychain",
+  "icon": "database",
+  "version": "0.5.3",
+  "author": "Serafino D'Angelillo",
+  "stage": "alpha",
+  "sdk": 1,
+  "permissions": {
+    "claude": false,
+    "docs": false,
+    "http": ["http://127.0.0.1:47861/"],
+    "helpers": [
+      {
+        "id": "server",
+        "command": ["python3", "-B", "server.py"],
+        "keepAlive": true
+      }
+    ],
+    "shared": [],
+    "tasks": false,
+    "terminals": false
+  }
+}
