@@ -18,6 +18,9 @@
     },
     {
       "path": "extensions/db-viewer"
+    },
+    {
+      "path": "extensions/api-explorer"
     }
   ],
   "name": "octopus-extensions"

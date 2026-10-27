@@ -1,0 +1,31 @@
+{
+  "author": "Serafino D'Angelillo",
+  "version": "1.0.0",
+  "name": "API explorer",
+  "description": "Send HTTP requests, organise them in collections with environments and history, import and export Postman collections.",
+  "icon": "send",
+  "stage": "beta",
+  "permissions": {
+    "claude": false,
+    "docs": false,
+    "http": [
+      "http://127.0.0.1:47871/",
+      "http://127.0.0.1:47872/"
+    ],
+    "shared": [],
+    "tasks": false,
+    "terminals": false,
+    "helpers": [
+      {
+        "id": "proxy",
+        "command": [
+          "python3",
+          "-B",
+          "proxy.py"
+        ],
+        "keepAlive": true
+      }
+    ]
+  },
+  "sdk": 1
+}
