@@ -2,7 +2,7 @@
   "name": "Calendar",
   "description": "All your calendars in one place, Notion Calendar style: Google, Outlook and ICS accounts side by side, plus local events you create by dragging",
   "icon": "calendar",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "author": "Serafino D'Angelillo",
   "sdk": 1,
   "permissions": {

@@ -5,7 +5,7 @@ import {
   occurrencesIn, meetingLink, icsCalendars, deleteLocal,
 } from "./store.js";
 import { h, icon, openPopover, closePopover, popoverOpen, modalOpen, closeModal } from "./ui.js";
-import { renderTimeGrid, renderMonth, renderAgenda, weekDays, visibleDays } from "./views.js";
+import { renderTimeGrid, renderMonth, renderAgenda, weekDays, visibleDays, resetScroll } from "./views.js";
 import { updateMenuBar } from "./menubar.js";
 import { openAddCalendar, openNewLocalCalendar, openSettings, openOccurrence, openShortcuts } from "./editor.js";
 import { addDays, addMonths, startOfDay, startOfWeek, startOfMonth, sameDay, format, formatDuration, formatRange, MIN, DAY } from "./dates.js";
@@ -473,7 +473,12 @@ function autoJoin() {
   } catch {}
 }
 setInterval(() => refreshAll(), 15 * 60_000);
-octopus.on("visible", (shown) => shown && !popoverOpen() && render());
+// Every time the section is shown, it opens on today (and the current hour), not where it was left.
+octopus.on("visible", (shown) => {
+  if (!shown || popoverOpen() || modalOpen()) return;
+  resetScroll();
+  goToday();
+});
 octopus.on("theme", () => updateMenuBar()); // calendar colours are theme colours
 
 // Clicks in the menu bar's menu (menubar.js): its rows' ids.

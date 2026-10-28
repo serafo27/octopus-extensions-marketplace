@@ -84,6 +84,9 @@ function occClass(o, base) {
 
 let lastScroll = null;
 
+/** The next time grid scrolls to the current hour instead of where it was left. */
+export const resetScroll = () => (lastScroll = null);
+
 export function renderTimeGrid(root) {
   const days = visibleDays();
   const N = days.length;
