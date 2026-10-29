@@ -8,7 +8,7 @@ export const DEFAULTS = { driver: "mysql", host: "127.0.0.1", port: 3306, user: 
 export const ENVS = { dev: "Development", staging: "Staging", prod: "Production" };
 const PROD_MAX_ROWS = 1000; // server.py PROD_MAX_ROWS
 const COLORS = ["", "#3fb950", "#d29922", "#9e1c2c", "#f85149", "#58a6ff", "#bc8cff"];
-const PROD_COLOR = "#9e1c2c"; // bordeaux: darker than the error red
+export const PROD_COLOR = "#9e1c2c"; // bordeaux: darker than the error red
 
 function read(dlg, base) {
   const f = (n) => dlg.querySelector(`[name=${n}]`);

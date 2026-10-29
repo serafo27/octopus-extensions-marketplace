@@ -2,7 +2,7 @@
   "name": "Db Viewer",
   "description": "Browse and query MySQL databases: schema tree, table structure, indexes and keys, a SQL editor with automatic LIMIT, timeouts that kill runaway queries, passwords in the Keychain",
   "icon": "database",
-  "version": "0.5.4",
+  "version": "0.6.1",
   "author": "Serafino D'Angelillo",
   "stage": "beta",
   "sdk": 1,

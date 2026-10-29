@@ -4,6 +4,7 @@
 import { call, connectHelper, restartHelper, wire } from "./api.js";
 import { editConnection, ENVS } from "./connform.js";
 import { icons } from "./icons.js";
+import { importConnections } from "./importer.js";
 import { envBanner, QueryTab } from "./query.js";
 import { SessionsTab } from "./sessions.js";
 import { quoteIdent } from "./sql.js";
@@ -166,6 +167,8 @@ class App {
     s.promise = call("/schemas", { conn: wire(conn) })
       .then((list) => {
         s.list = list;
+        // It connected: whatever password it has (maybe none) is the right one.
+        if (conn.needsPassword) (delete conn.needsPassword, this.saveConnections());
         for (const t of this.tabs) if (t.connId === connId) t.connectionChanged?.();
         return list;
       })
@@ -206,7 +209,13 @@ class App {
   // ---- Tree ----
 
   bindChrome() {
-    $("#new-conn").onclick = () => this.newConnection();
+    $("#new-conn").onclick = (e) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      contextMenu({ preventDefault() {}, stopPropagation() {}, clientX: r.left, clientY: r.bottom + 2 }, [
+        { label: "New connection…", icon: icons.plus, action: () => this.newConnection() },
+        { label: "Import from other apps…", icon: icons.download, action: () => this.importConnections() },
+      ]);
+    };
     const groupBtn = $("#group-env");
     groupBtn.innerHTML = icons.group;
     groupBtn.classList.toggle("on", !!this.ui.groupByEnv);
@@ -284,8 +293,9 @@ class App {
     const tree = $("#tree");
     this.nodes.clear();
     if (!this.connections.length) {
-      tree.innerHTML = `<div class="empty-tree muted">No connections yet.<br><button class="primary" id="first-conn">${icons.plus}<span>New connection</span></button></div>`;
+      tree.innerHTML = `<div class="empty-tree muted">No connections yet.<br><button class="primary" id="first-conn">${icons.plus}<span>New connection</span></button><br><button class="ghost" id="first-import">${icons.download}<span>Import from other apps…</span></button></div>`;
       $("#first-conn").onclick = () => this.newConnection();
+      $("#first-import").onclick = () => this.importConnections();
       return;
     }
     const out = [];
@@ -335,7 +345,7 @@ class App {
       const open = row(n, 0, {
         icon: `<span class="conn-ic" ${c.color ? `style="--c:${c.color}"` : ""}>${icons.server}</span>`,
         label: `${esc(c.name)}${connected ? `<span class="dot ok" title="Connected · ${sessions} session(s) open on the server now (idle ones close after a minute and reopen when needed)"></span>` : ""}`,
-        meta: `${running ? `<span class="badge warn" title="Running statements" data-act="sessions">${running} running</span>` : ""}${c.env === "prod" ? '<span class="env-tag prod" title="Production: always read-only">PROD</span>' : c.env === "staging" ? '<span class="env-tag staging">STG</span>' : ""}${c.readOnly ? `<span class="ro" title="Read-only">${icons.lock}</span>` : ""}`,
+        meta: `${c.needsPassword ? `<span class="badge warn" data-act="edit" title="Imported from ${esc(c.importedFrom || "another app")} without its password: click to add it">no password</span>` : ""}${running ? `<span class="badge warn" title="Running statements" data-act="sessions">${running} running</span>` : ""}${c.env === "prod" ? '<span class="env-tag prod" title="Production: always read-only">PROD</span>' : c.env === "staging" ? '<span class="env-tag staging">STG</span>' : ""}${c.readOnly ? `<span class="ro" title="Read-only">${icons.lock}</span>` : ""}`,
         actions: act("query", icons.query, "New query (⌘T)") + act("sessions", icons.pulse, "Sessions: running queries, kill") + act("menu", "⋯", "More"),
         title: `${c.user}@${c.host}:${c.port}${c.database ? "/" + c.database : ""}`,
         cls: "conn",
@@ -463,6 +473,7 @@ class App {
     if (act === "menu") return this.nodeMenu(n, e);
     if (act === "data") return this.openData(n);
     if (act === "sessions") return this.openSessions(conn);
+    if (act === "edit") return this.editConn(conn);
     if (act === "run") return this.openSaved(n.savedId, true);
     if (act === "query") {
       if (n.type === "table") return this.openQuery(conn, n.schema, `SELECT *\nFROM ${quoteIdent(n.name)}\nLIMIT ${conn.rowLimit || 200};`);
@@ -677,12 +688,23 @@ class App {
     this.renderTree();
   }
 
+  async importConnections() {
+    const conns = await importConnections(this.connections);
+    if (!conns.length) return;
+    this.connections.push(...conns);
+    await this.saveConnections();
+    this.renderTree();
+    this.renderWelcome();
+    octopus.toast(`Imported ${conns.length} connection${conns.length > 1 ? "s" : ""}: add their passwords with Edit…`, "success");
+  }
+
   async editConn(conn) {
     const has = await call("/secret/has", { ids: [conn.id] }).catch(() => ({}));
     const updated = await editConnection(conn, { hasPassword: !!has[conn.id] });
     if (!updated) return;
     await call("/disconnect", { id: conn.id }).catch(() => {});
     Object.assign(conn, updated);
+    delete conn.needsPassword; // the form was saved: its password is what the user meant
     await this.saveConnections();
     this.refreshConn(conn.id);
   }
@@ -784,9 +806,10 @@ class App {
           <li>A statement running past the connection's timeout is killed on the server.</li>
           <li>Idle sessions close after a minute.</li>
         </ul>
-        ${this.connections.length ? "" : `<button class="primary" id="welcome-new">${icons.plus}<span>New connection</span></button>`}
+        ${this.connections.length ? "" : `<button class="primary" id="welcome-new">${icons.plus}<span>New connection</span></button> <button class="ghost" id="welcome-import">${icons.download}<span>Import from other apps…</span></button>`}
       </div>`;
     $("#welcome-new")?.addEventListener("click", () => this.newConnection());
+    $("#welcome-import")?.addEventListener("click", () => this.importConnections());
   }
 
   openQuery(conn, schema, sql = "", run = false) {

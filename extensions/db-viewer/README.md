@@ -13,6 +13,12 @@ Browse and query MySQL (and MariaDB) from Octopus.
 - **Connect / Disconnect**: a connection connects when you expand it (or run a query on it) and stays connected
   until Disconnect, which closes its sessions on the server (killing what runs), forgets its tree and collapses it.
   Nothing reconnects by itself after that. The green dot means connected.
+- **Import from other apps** (the "+" menu): the helper reads MySQL Workbench's `connections.xml` and the JetBrains
+  IDEs' data sources (global, and of each recent project), and shows them all in a preview. Those already in Db Viewer
+  (same host, port and user) come unchecked; nothing is created until you pick and confirm. Each row's environment is
+  guessed from its name and host (Staging when nothing says, flagged `?`); imported connections are read-only.
+  Passwords aren't imported (they're in those apps' Keychain items): the tree shows "no password" until you edit
+  the connection or it connects. SSH tunnels and sockets are listed as not importable.
 - **Saved queries**: ⌘S in a query tab saves it (⇧⌘S as a new one); they're listed under their connection in the
   tree (click to open, ▶ to run; rename, copy, delete from the context menu). A tab edited since saving shows •.
 - **Dry run** (writable connections; ⇧⌘↵, the Dry run button, or "Dry run first" when a write asks): the UPDATE /

@@ -1174,3 +1174,61 @@ table.plan td:last-child {
   display: inline-flex;
   color: color-mix(in srgb, var(--c) 55%, var(--fg-muted));
 }
+
+/* ---- Import from other apps ---- */
+dialog.modal.import {
+  width: 900px;
+}
+.import-note {
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+.import-list {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.import-list th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--fg-muted);
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: -12px;
+  background: var(--bg-widget);
+}
+.import-list td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.import-list tr:hover td {
+  background: var(--bg-hover);
+}
+.import-list tr.exists td {
+  color: var(--fg-muted);
+}
+.import-list th:first-child,
+.import-list td:first-child {
+  width: 18px;
+}
+.import-list select {
+  font-size: 12px;
+}
+.warn-text {
+  color: var(--warn);
+  font-weight: 600;
+  cursor: help;
+}
+.import-skipped {
+  margin-top: 10px;
+}
+.import-skipped ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: var(--fg-muted);
+}
+.node .badge[data-act] {
+  cursor: pointer;
+}

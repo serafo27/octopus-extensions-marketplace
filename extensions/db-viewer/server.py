@@ -28,6 +28,7 @@ Endpoints (POST, JSON in and out; `conn` is a connection as the page stores it, 
   /columns {conn, schema, table} · /query {conn, sql, schema?, limit?, timeoutMs?, queryId, confirmed?}
   /cancel {queryId} · /disconnect {id}
   /processlist {conn} (the server's threads; ours marked) · /kill {conn, threadId, queryOnly}
+  /import/scan: connections found in MySQL Workbench and JetBrains IDEs (no passwords), for the import preview
   /dryrun {conn, sql, schema?, queryId}: an UPDATE / DELETE / INSERT / REPLACE run in a transaction, previewed (rows
     before → after) and rolled back; the session is then dropped, so nothing of it can be committed.
 """
@@ -49,6 +50,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "vendor"))
 sys.path.insert(0, str(HERE))
 
+import importers  # noqa: E402
 import keychain  # noqa: E402
 import sqltext  # noqa: E402
 from drivers import DRIVERS  # noqa: E402
@@ -451,6 +453,10 @@ def _close_idle(cid):
     return len(closing)
 
 
+def ep_import_scan(body):
+    return importers.scan()
+
+
 def ep_disconnect(body):
     cid = body.get("id")
     with _lock:
@@ -465,7 +471,7 @@ ROUTES = {
     "/secret/has": ep_secret_has, "/test": ep_test, "/schemas": ep_schemas, "/objects": ep_objects,
     "/table": ep_table, "/columns": ep_columns, "/query": ep_query, "/cancel": ep_cancel,
     "/disconnect": ep_disconnect, "/processlist": ep_processlist, "/kill": ep_kill,
-    "/dryrun": ep_dryrun,
+    "/dryrun": ep_dryrun, "/import/scan": ep_import_scan,
 }
 
 
