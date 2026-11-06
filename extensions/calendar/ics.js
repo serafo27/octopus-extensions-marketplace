@@ -277,12 +277,37 @@ export function expand(series, from, to) {
   return out;
 }
 
+// A work calendar's feed holds years of meetings, and going through all of them is what costs: the views, the
+// menu bar and the notifications ask for nearly the same days every 30 seconds. So the last whole-day windows of
+// each feed's series are kept; a new fetch makes new series, which start over.
+const WINDOWS_KEPT = 8;
+const windowsOf = new WeakMap(); // a feed's series -> "from|to" -> the occurrences of those whole days
+
+/** `expand`, of series that don't change (a feed's): the occurrences are shared, not to be changed. */
+export function expandCached(series, from, to) {
+  const dayFrom = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const dayTo = new Date(to.getFullYear(), to.getMonth(), to.getDate() + 1);
+  const key = `${+dayFrom}|${+dayTo}`;
+  let windows = windowsOf.get(series);
+  if (!windows) windowsOf.set(series, (windows = new Map()));
+  let all = windows.get(key);
+  if (all) windows.delete(key); // last, as the most recently used
+  else all = expand(series, dayFrom, dayTo);
+  windows.set(key, all);
+  if (windows.size > WINDOWS_KEPT) windows.delete(windows.keys().next().value);
+  return all.filter((o) => overlaps(o.start, o.end, from, to));
+}
+
+function overlaps(start, end, from, to) {
+  const endForOverlap = +end === +start ? +start + 1 : +end;
+  return endForOverlap > +from && +start < +to;
+}
+
 function pushIfOverlaps(out, s, start, from, to) {
   const end = s.allDay
     ? new Date(start.getFullYear(), start.getMonth(), start.getDate() + (s.durationDays || 1))
     : new Date(+start + s.durationMs);
-  const endForOverlap = +end === +start ? +start + 1 : +end;
-  if (endForOverlap <= +from || +start >= +to) return;
+  if (!overlaps(start, end, from, to)) return;
   out.push({
     key: `${s.uid}|${+start}`,
     uid: s.uid,

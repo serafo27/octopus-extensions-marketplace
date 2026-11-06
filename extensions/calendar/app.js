@@ -426,10 +426,17 @@ const notified = new Set();
 let pointerDown = false;
 window.addEventListener("pointerdown", () => (pointerDown = true), true);
 window.addEventListener("pointerup", () => (pointerDown = false), true);
+// Nothing is drawn for nobody: while another section shows or the window is hidden the tick keeps the menu bar
+// and the notifications going, and the page catches up as it's seen again.
+let sectionShown = true;
+octopus.ready().then((info) => (sectionShown = info.visible !== false));
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && sectionShown && !popoverOpen() && !modalOpen()) render();
+});
 let ticks = 0;
 setInterval(() => {
   const busy = popoverOpen() || modalOpen() || pointerDown || document.activeElement?.matches("input, textarea, select");
-  if (ticks++ % 2 === 0 && !busy) render();
+  if (ticks++ % 2 === 0 && !busy && sectionShown && !document.hidden) render();
   else updateMenuBar();
   if (S.settings.autoJoin) autoJoin();
   if (!S.settings.notify) return;
@@ -475,6 +482,7 @@ function autoJoin() {
 setInterval(() => refreshAll(), 15 * 60_000);
 // Every time the section is shown, it opens on today (and the current hour), not where it was left.
 octopus.on("visible", (shown) => {
+  sectionShown = shown;
   if (!shown || popoverOpen() || modalOpen()) return;
   resetScroll();
   goToday();

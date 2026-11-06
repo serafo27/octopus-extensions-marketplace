@@ -1,6 +1,6 @@
 // State, persistence, calendar sources (local events and ICS feeds) and the occurrences the views draw.
 
-import { parseICS, expand } from "./ics.js";
+import { parseICS, expand, expandCached } from "./ics.js";
 import { DAY, startOfDay } from "./dates.js";
 
 /** Calendar colours: theme variables, so they follow Octopus's light and dark themes. */
@@ -287,10 +287,12 @@ export function occurrencesIn(from, to, { all = false, search = true } = {}) {
   for (const { account, cal } of allCalendars()) {
     if (!cal.visible && !all) continue;
     const me = account.name.toLowerCase();
-    let series;
-    if (account.kind === "local") series = S.local.filter((e) => e.calendarId === cal.id).map(localSeries);
-    else series = S.feeds.get(cal.id)?.series || [];
-    for (const o of expand(series, from, to)) {
+    // Local events change in place and are few: only a feed's series are kept expanded.
+    const occurrences =
+      account.kind === "local"
+        ? expand(S.local.filter((e) => e.calendarId === cal.id).map(localSeries), from, to)
+        : expandCached(S.feeds.get(cal.id)?.series || [], from, to);
+    for (const o of occurrences) {
       const mine = o.attendees?.find((a) => a.email?.toLowerCase() === me)?.status || null;
       if (mine === "DECLINED" && S.settings.hideDeclined) continue;
       out.push({
