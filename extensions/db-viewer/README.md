@@ -8,8 +8,9 @@ Browse and query MySQL (and MariaDB) from Octopus.
 - **Table tab**: columns, indexes, foreign keys (both ways, clickable), triggers, DDL, info (engine, sizes,
   auto-increment, collation…) and the first rows.
 - **Query tab**: highlighted editor, ⌘↵ runs the statement under the cursor (or the selection), Explain,
-  autocomplete (⌃Space; `alias.` → that table's columns), virtual result grid (sort, resize, ⌘C a cell,
-  double-click a value), export to TSV/CSV/JSON, per-connection history. ⌘T new query, ⌘W close tab.
+  autocomplete (⌃Space; `alias.` → that table's columns), virtual result grid (sort, resize, double-click a value or click ⤢ on a cut-off selected cell to see it whole;
+  select a cell, a range by drag / ⇧click / ⇧arrows, rows by their number, all with ⌘A; ⌘C copies it tab-separated,
+  ⇧⌘C with column names, right-click to copy rows as TSV, CSV, JSON or INSERT), export to TSV/CSV/JSON, per-connection history. ⌘T new query, ⌘W close tab.
 - **Connect / Disconnect**: a connection connects when you expand it (or run a query on it) and stays connected
   until Disconnect, which closes its sessions on the server (killing what runs), forgets its tree and collapses it.
   Nothing reconnects by itself after that. The green dot means connected.

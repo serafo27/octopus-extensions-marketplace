@@ -35,6 +35,7 @@ export class TableTab {
     this.dataEl = this.el.querySelector(".t-data");
     this.gridEl = this.el.querySelector(".t-grid");
     this.grid = new Grid(this.gridEl, { onCellOpen: (col, v) => showValue(col, v) });
+    this.grid.tableName = table;
     this.el.querySelector(".subtabs").addEventListener("click", (e) => {
       const b = e.target.closest(".subtab");
       if (b) this.show(b.dataset.s);

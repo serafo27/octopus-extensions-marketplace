@@ -558,10 +558,44 @@ select.schema {
 .grid tbody tr:hover td {
   background: var(--bg-hover);
 }
+.grid td.in-sel,
+.grid tr.row-sel td {
+  background: var(--bg-selected);
+}
+.grid tr.row-sel td.rn {
+  color: var(--fg-strong);
+}
+.grid tbody td.rn {
+  cursor: pointer;
+}
 .grid td.sel {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
   background: var(--bg-selected) !important;
+}
+.grid td.has-open {
+  position: relative;
+  padding-right: 24px;
+}
+.grid .cell-open {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  height: 16px;
+  width: 18px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 3px);
+  background: var(--bg-widget);
+  color: var(--fg);
+  font: 11px var(--font-ui);
+  line-height: 14px;
+  cursor: pointer;
+}
+.grid .cell-open:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-editor);
 }
 .grid tr.spacer td {
   border: 0;

@@ -1,5 +1,7 @@
 // A result grid: virtual rows (only what's on screen is in the DOM), sticky header, sortable and resizable columns,
-// a selected cell (arrows move it, Cmd+C copies it), double-click shows the whole value.
+// a selection (click a cell, drag or Shift+click/arrows for a range, click the row number for whole rows, Cmd+A for all)
+// that Cmd+C copies (Shift+Cmd+C with the column names; right-click for more formats), double-click shows the value.
+import { contextMenu } from "./ui.js";
 
 const ROW_H = 22;
 const NUMERIC = /^(TINY|SHORT|LONG|LONGLONG|INT24|FLOAT|DOUBLE|DECIMAL|NEWDECIMAL|YEAR)$/;
@@ -53,6 +55,23 @@ export function toJson(columns, rows) {
   );
 }
 
+// Tab-separated for spreadsheets: a value with tabs, newlines or quotes is quoted (Sheets, Excel and Numbers read it).
+const tsvCell = (t) => (t === null ? "NULL" : /[\t\n\r"]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t);
+
+/** INSERT statements for rows (table name from the query when known, else a placeholder). */
+export function toInsert(columns, rows, table) {
+  const id = (n) => "`" + String(n).replace(/`/g, "``") + "`";
+  const lit = (v) => {
+    if (v === null || v === undefined) return "NULL";
+    if (typeof v === "number" || typeof v === "boolean") return String(v);
+    if (typeof v === "object" && "$binary" in v) return v.$binary.startsWith("0x") && !v.cut ? v.$binary : "NULL /* binary not copied */";
+    const t = cellText(v);
+    return "'" + t.replace(/\\/g, "\\\\").replace(/'/g, "''").replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t").replace(/\0/g, "\\0") + "'";
+  };
+  const head = `INSERT INTO ${table ? id(table) : "`table`"} (${columns.map((c) => id(c.name)).join(", ")}) VALUES`;
+  return rows.map((r) => `${head} (${r.map(lit).join(", ")});`).join("\n");
+}
+
 export class Grid {
   constructor(host, { onCellOpen } = {}) {
     this.host = host;
@@ -68,14 +87,51 @@ export class Grid {
     this.columns = [];
     this.rows = [];
     this.view = [];
-    this.sel = null; // {r, c} in view coordinates
+    this.sel = null; // the cursor {r, c}, in view coordinates
+    this.anchor = null; // where the range starts; the range is anchor..sel (whole rows when this.rowMode)
+    this.rowMode = false;
     this.sort = null;
     this.scroll.addEventListener("scroll", () => this.paint());
     new ResizeObserver(() => this.paint()).observe(this.scroll);
     this.body.addEventListener("mousedown", (e) => {
-      const td = e.target.closest("td[data-c]");
-      if (!td) return;
-      this.select(+td.parentNode.dataset.r, +td.dataset.c);
+      const td = e.target.closest("td");
+      const tr = td?.parentNode;
+      if (!tr?.dataset.r) return;
+      const r = +tr.dataset.r;
+      if (e.button === 0 && e.target.closest(".cell-open")) {
+        e.preventDefault();
+        e.stopPropagation();
+        return this.openCell(r, +td.dataset.c);
+      }
+      const isRn = td.classList.contains("rn");
+      if (e.button === 2) {
+        // Right-click inside the selection keeps it; elsewhere it selects that cell (or row) first.
+        if (!(isRn ? this.rowMode && this.inRows(r) : this.inRange(r, +td.dataset.c))) this.select(r, isRn ? 0 : +td.dataset.c, { rows: isRn });
+        return;
+      }
+      if (e.button !== 0) return;
+      e.preventDefault();
+      this.select(r, isRn ? this.sel?.c ?? 0 : +td.dataset.c, { extend: e.shiftKey, rows: isRn });
+      // Drag extends the range.
+      const move = (ev) => {
+        const t = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.("td");
+        const row = t?.parentNode;
+        if (!row?.dataset?.r || !this.body.contains(row)) return;
+        const rr = +row.dataset.r;
+        const cc = this.rowMode || t.classList.contains("rn") ? this.sel.c : +t.dataset.c;
+        if (rr !== this.sel.r || cc !== this.sel.c) this.select(rr, cc, { extend: true, rows: this.rowMode });
+      };
+      const up = () => {
+        window.removeEventListener("mousemove", move);
+        window.removeEventListener("mouseup", up);
+      };
+      window.addEventListener("mousemove", move);
+      window.addEventListener("mouseup", up);
+    });
+    this.body.addEventListener("contextmenu", (e) => {
+      const td = e.target.closest("td");
+      if (!td?.parentNode?.dataset.r) return;
+      this.showMenu(e, td.classList.contains("rn") ? null : +td.dataset.c);
     });
     this.body.addEventListener("dblclick", (e) => {
       const td = e.target.closest("td[data-c]");
@@ -84,6 +140,7 @@ export class Grid {
     host.addEventListener("keydown", (e) => this.key(e));
     this.headRow.addEventListener("click", (e) => {
       if (e.target.closest(".resizer")) return;
+      if (e.target.closest("th.rn")) return this.selectAll();
       const th = e.target.closest("th[data-c]");
       if (th) this.toggleSort(+th.dataset.c);
     });
@@ -95,6 +152,8 @@ export class Grid {
     this.rows = rows;
     this.sort = null;
     this.sel = null;
+    this.anchor = null;
+    this.rowMode = false;
     this.widths = columns.map((c, i) => {
       let w = c.name.length;
       for (let r = 0; r < Math.min(rows.length, 200); r++) {
@@ -116,7 +175,7 @@ export class Grid {
     this.table.style.width = 48 + this.widths.reduce((a, b) => a + b, 0) + "px";
     const arrow = (i) => (this.sort?.c === i ? (this.sort.dir > 0 ? " ▲" : " ▼") : "");
     this.headRow.innerHTML =
-      `<th class="rn">#</th>` +
+      `<th class="rn" title="Select all (⌘A)">#</th>` +
       this.columns
         .map(
           (c, i) =>
@@ -183,19 +242,39 @@ export class Grid {
     let html = `<tr class="spacer" style="height:${first * ROW_H}px"><td colspan="${cols + 1}"></td></tr>`;
     for (let r = first; r < last; r++) {
       const row = this.rows[this.view[r]];
-      html += `<tr data-r="${r}"><td class="rn">${this.view[r] + 1}</td>`;
+      const rowSel = this.rowMode && this.inRows(r);
+      html += `<tr data-r="${r}"${rowSel ? ' class="row-sel"' : ""}><td class="rn">${this.view[r] + 1}</td>`;
       for (let c = 0; c < cols; c++) {
-        const selected = this.sel && this.sel.r === r && this.sel.c === c ? " sel" : "";
-        html += `<td data-c="${c}" class="${this.numeric[c] ? "num" : ""}${selected}">${cellHtml(row[c])}</td>`;
+        const cls = (this.numeric[c] ? "num" : "") + (this.sel && this.sel.r === r && this.sel.c === c ? " sel" : "") + (this.inRange(r, c) ? " in-sel" : "");
+        html += `<td data-c="${c}" class="${cls}">${cellHtml(row[c])}</td>`;
       }
       html += "</tr>";
     }
     html += `<tr class="spacer" style="height:${(this.view.length - last) * ROW_H}px"><td colspan="${cols + 1}"></td></tr>`;
     this.body.innerHTML = html;
+    this.markCut();
   }
 
-  select(r, c) {
+  /** On the selected cell, when its value doesn't fit (or spans lines), a button that opens it whole. */
+  markCut() {
+    const td = this.body.querySelector("td.sel");
+    if (!td || this.rowMode) return;
+    const v = this.rows[this.view[this.sel.r]]?.[this.sel.c];
+    const t = cellText(v);
+    const cut = (v && typeof v === "object" && (v.cut || "$text" in v)) || (t && t.includes("\n")) || td.scrollWidth > td.clientWidth;
+    if (!cut) return;
+    td.classList.add("has-open");
+    td.insertAdjacentHTML("beforeend", `<button class="cell-open" title="Show the whole value (Enter, double-click)">⤢</button>`);
+  }
+
+  /** Moves the cursor; `extend` grows the range from the anchor, `rows` selects whole rows. */
+  select(r, c, { extend = false, rows = false } = {}) {
+    if (!this.view.length || !this.columns.length) return;
     this.sel = { r: Math.max(0, Math.min(this.view.length - 1, r)), c: Math.max(0, Math.min(this.columns.length - 1, c)) };
+    if (!extend || !this.anchor) {
+      this.anchor = { ...this.sel };
+      this.rowMode = rows;
+    }
     // Keep it in view.
     const top = this.sel.r * ROW_H;
     const headH = this.headRow.offsetHeight;
@@ -203,6 +282,94 @@ export class Grid {
     else if (top + ROW_H > this.scroll.scrollTop + this.scroll.clientHeight - headH) this.scroll.scrollTop = top + ROW_H - this.scroll.clientHeight + headH;
     this.paint(true);
     this.host.focus({ preventScroll: true });
+  }
+
+  selectAll() {
+    if (!this.view.length) return;
+    this.anchor = { r: 0, c: 0 };
+    this.sel = { r: this.view.length - 1, c: this.sel?.c ?? 0 };
+    this.rowMode = true;
+    this.paint(true);
+    this.host.focus({ preventScroll: true });
+  }
+
+  /** The selected rectangle, in view coordinates: {r0, r1, c0, c1} (inclusive). */
+  range() {
+    if (!this.sel) return null;
+    const a = this.anchor || this.sel;
+    return {
+      r0: Math.min(a.r, this.sel.r),
+      r1: Math.max(a.r, this.sel.r),
+      c0: this.rowMode ? 0 : Math.min(a.c, this.sel.c),
+      c1: this.rowMode ? this.columns.length - 1 : Math.max(a.c, this.sel.c),
+    };
+  }
+
+  inRows(r) {
+    const g = this.range();
+    return !!g && r >= g.r0 && r <= g.r1;
+  }
+
+  inRange(r, c) {
+    const g = this.range();
+    if (!g || (g.r0 === g.r1 && g.c0 === g.c1 && !this.rowMode)) return false; // a single cell: just the cursor
+    return r >= g.r0 && r <= g.r1 && c >= g.c0 && c <= g.c1;
+  }
+
+  /** What's selected: {columns, rows} with rows as arrays of raw values, in display order. */
+  selection({ wholeRows = false } = {}) {
+    const g = this.range();
+    if (!g) return null;
+    const c0 = wholeRows ? 0 : g.c0;
+    const c1 = wholeRows ? this.columns.length - 1 : g.c1;
+    const rows = [];
+    for (let r = g.r0; r <= g.r1; r++) rows.push(this.rows[this.view[r]].slice(c0, c1 + 1));
+    return { columns: this.columns.slice(c0, c1 + 1), rows };
+  }
+
+  copy(format = "tsv", opts = {}) {
+    const s = this.selection(opts);
+    if (!s) return;
+    let text;
+    const single = s.rows.length === 1 && s.columns.length === 1;
+    if (format === "json") text = toJson(s.columns, s.rows);
+    else if (format === "csv") text = toCsv(s.columns, s.rows);
+    else if (format === "insert") text = toInsert(s.columns, s.rows, this.tableName);
+    else if (single && !opts.headers) {
+      const t = cellText(s.rows[0][0]);
+      text = t === null ? "NULL" : t; // one cell: its value as it is
+    } else {
+      const lines = s.rows.map((r) => r.map((v) => tsvCell(cellText(v))).join("\t"));
+      if (opts.headers) lines.unshift(s.columns.map((c) => c.name).join("\t"));
+      text = lines.join("\n");
+    }
+    octopus.copy(text);
+    const n = s.rows.length;
+    octopus.toast(single && format === "tsv" && !opts.headers ? "Copied" : `Copied ${n} row${n === 1 ? "" : "s"}${opts.wholeRows || this.rowMode ? "" : ` × ${s.columns.length} column${s.columns.length === 1 ? "" : "s"}`}`, "info");
+  }
+
+  showMenu(e, c) {
+    const g = this.range();
+    if (!g) return;
+    const nRows = g.r1 - g.r0 + 1;
+    const nCols = g.c1 - g.c0 + 1;
+    const single = nRows === 1 && nCols === 1 && !this.rowMode;
+    const rowsLabel = nRows === 1 ? "row" : `${nRows} rows`;
+    const items = [
+      { label: single ? "Copy value" : "Copy", action: () => this.copy("tsv") },
+      { label: "Copy with column names", action: () => this.copy("tsv", { headers: true }) },
+      { separator: true },
+      { label: `Copy ${rowsLabel}`, action: () => this.copy("tsv", { wholeRows: true }) },
+      { label: `Copy ${rowsLabel} with column names`, action: () => this.copy("tsv", { wholeRows: true, headers: true }) },
+      { label: `Copy ${rowsLabel} as CSV`, action: () => this.copy("csv", { wholeRows: true }) },
+      { label: `Copy ${rowsLabel} as JSON`, action: () => this.copy("json", { wholeRows: true }) },
+      { label: `Copy ${rowsLabel} as INSERT`, action: () => this.copy("insert", { wholeRows: true }) },
+    ];
+    if (c !== null && c !== undefined) {
+      items.push({ separator: true }, { label: "Copy column name", action: () => (octopus.copy(this.columns[c].name), octopus.toast("Copied", "info")) });
+    }
+    if (single) items.push({ label: "Show value", action: () => this.openCell(g.r0, g.c0) });
+    contextMenu(e, items);
   }
 
   selectedValue() {
@@ -216,20 +383,26 @@ export class Grid {
   }
 
   key(e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === "a") {
+      e.preventDefault();
+      return this.selectAll();
+    }
     if (!this.sel) return;
     const { r, c } = this.sel;
     const moves = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1], PageDown: [20, 0], PageUp: [-20, 0] };
     if (moves[e.key]) {
       e.preventDefault();
-      this.select(r + moves[e.key][0], c + moves[e.key][1]);
+      this.select(r + moves[e.key][0], c + moves[e.key][1], { extend: e.shiftKey, rows: e.shiftKey && this.rowMode });
     } else if (e.key === "Enter") {
       e.preventDefault();
       this.openCell(r, c);
-    } else if ((e.metaKey || e.ctrlKey) && e.key === "c") {
+    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") {
       e.preventDefault();
-      const t = cellText(this.selectedValue());
-      octopus.copy(t === null ? "NULL" : t);
-      octopus.toast("Copied", "info");
+      this.copy("tsv", { headers: e.shiftKey });
+    } else if (e.key === "Escape" && (this.rowMode || this.anchor.r !== r || this.anchor.c !== c)) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.select(r, c); // back to the cursor's cell
     }
   }
 

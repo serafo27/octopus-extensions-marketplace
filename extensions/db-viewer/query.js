@@ -416,6 +416,7 @@ export class QueryTab {
       msg.hidden = true;
       gridEl.hidden = false;
       this.grid.setData(r.columns, r.rows);
+      this.grid.tableName = singleTable(r.executedSql || "");
     } else {
       gridEl.hidden = true;
       msg.hidden = false;
@@ -495,4 +496,11 @@ export class QueryTab {
   serialize() {
     return { kind: "query", connId: this.connId, schema: this.schema, sql: this.ta.value, savedId: this.savedId };
   }
+}
+
+// The table a plain single-table SELECT reads (for "Copy as INSERT"); null with joins, subqueries or unions.
+function singleTable(sql) {
+  if (/\b(JOIN|UNION)\b|\(\s*SELECT\b/i.test(sql)) return null;
+  const m = /^\s*SELECT\b[\s\S]*?\bFROM\s+(?:(?:`[^`]+`|\w+)\s*\.\s*)?(`[^`]+`|\w+)\s*(?:$|[\s;])(?!\s*,)/i.exec(sql);
+  return m ? m[1].replace(/^`|`$/g, "").replace(/``/g, "`") : null;
 }
