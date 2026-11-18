@@ -377,12 +377,30 @@ def ep_dryrun(body):
     if cfg.get("readOnly", True):
         raise Refused("This connection is read-only: a dry run executes the statement (then rolls it back), so it "
                       "needs a connection that can write.", status=403)
+    create = sqltext.create_table(sql) if kind == "CREATE" else None
+    if create:
+        timeout_ms = _timeout(cfg, body)
+
+        def go_create(d, conn, entry):
+            entry["drop"] = True  # the temporary table goes with the session
+            d.use(conn, body.get("schema"))
+            started = time.time()
+            try:
+                out = d.dry_create(conn, create)
+            except d.DryRunRefused as e:
+                raise Refused(str(e))
+            out.update(elapsedMs=round((time.time() - started) * 1000), cap=DRY_RUN_CAP, rolledBack=True)
+            return out
+
+        return with_session(cfg, body, go_create, timeout_ms, query_id=body.get("queryId") or secrets.token_hex(8))
     if kind in sqltext.IMPLICIT_COMMIT:
         raise Refused(f"{kind} can't be dry-run: MySQL commits it immediately, there's no rollback. To try it, "
                       "copy the table first (CREATE TABLE t_copy LIKE t; INSERT INTO t_copy SELECT * FROM t).")
     info = sqltext.parse_dml(sql)
     if not info:
         raise Refused(f"Only UPDATE, DELETE, INSERT and REPLACE can be dry-run{'' if kind != 'SELECT' else ': a SELECT changes nothing'}.")
+    # CREATE TABLEs written above the statement: a table they make that doesn't exist yet is created as temporary.
+    setup = [c for c in (sqltext.create_table(t) for t in (body.get("setup") or [])[:50] if isinstance(t, str)) if c]
     timeout_ms = _timeout(cfg, body)
 
     def go(d, conn, entry):
@@ -390,7 +408,7 @@ def ep_dryrun(body):
         d.use(conn, body.get("schema"))
         started = time.time()
         try:
-            out = d.dry_run(conn, sqltext.strip_trailing(sql), info, DRY_RUN_CAP)
+            out = d.dry_run(conn, sqltext.strip_trailing(sql), info, DRY_RUN_CAP, setup)
         except d.DryRunRefused as e:
             raise Refused(str(e))
         out.update(elapsedMs=round((time.time() - started) * 1000), cap=DRY_RUN_CAP, rolledBack=True)

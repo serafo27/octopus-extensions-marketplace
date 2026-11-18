@@ -58,24 +58,32 @@ export function toJson(columns, rows) {
 // Tab-separated for spreadsheets: a value with tabs, newlines or quotes is quoted (Sheets, Excel and Numbers read it).
 const tsvCell = (t) => (t === null ? "NULL" : /[\t\n\r"]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t);
 
+/** A cell as a MySQL literal. */
+export function sqlLiteral(v) {
+  if (v === null || v === undefined) return "NULL";
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (typeof v === "object" && "$binary" in v) return v.$binary.startsWith("0x") && !v.cut ? v.$binary : "NULL /* binary not copied */";
+  const t = cellText(v);
+  return "'" + t.replace(/\\/g, "\\\\").replace(/'/g, "''").replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t").replace(/\0/g, "\\0") + "'";
+}
+
+/** Whether a cell holds its whole value (long text and binary come cut). */
+export const isWhole = (v) => !(v && typeof v === "object" && (v.cut || ("$binary" in v && !v.$binary.startsWith("0x"))));
+
 /** INSERT statements for rows (table name from the query when known, else a placeholder). */
 export function toInsert(columns, rows, table) {
   const id = (n) => "`" + String(n).replace(/`/g, "``") + "`";
-  const lit = (v) => {
-    if (v === null || v === undefined) return "NULL";
-    if (typeof v === "number" || typeof v === "boolean") return String(v);
-    if (typeof v === "object" && "$binary" in v) return v.$binary.startsWith("0x") && !v.cut ? v.$binary : "NULL /* binary not copied */";
-    const t = cellText(v);
-    return "'" + t.replace(/\\/g, "\\\\").replace(/'/g, "''").replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t").replace(/\0/g, "\\0") + "'";
-  };
+  const lit = sqlLiteral;
   const head = `INSERT INTO ${table ? id(table) : "`table`"} (${columns.map((c) => id(c.name)).join(", ")}) VALUES`;
   return rows.map((r) => `${head} (${r.map(lit).join(", ")});`).join("\n");
 }
 
 export class Grid {
-  constructor(host, { onCellOpen } = {}) {
+  /** `rowMenu(rows)`: extra context-menu items for the selected rows (indexes in `this.rows`), or none. */
+  constructor(host, { onCellOpen, rowMenu } = {}) {
     this.host = host;
     this.onCellOpen = onCellOpen;
+    this.rowMenu = rowMenu;
     host.classList.add("grid");
     host.tabIndex = 0;
     host.innerHTML = `<div class="grid-scroll"><table><colgroup></colgroup><thead><tr></tr></thead><tbody></tbody></table></div>`;
@@ -369,7 +377,29 @@ export class Grid {
       items.push({ separator: true }, { label: "Copy column name", action: () => (octopus.copy(this.columns[c].name), octopus.toast("Copied", "info")) });
     }
     if (single) items.push({ label: "Show value", action: () => this.openCell(g.r0, g.c0) });
+    const extra = this.rowMenu?.(this.selectedRows()) || [];
+    if (extra.length) items.push({ separator: true }, ...extra);
     contextMenu(e, items);
+  }
+
+  /** The selected rows, as indexes in `this.rows`. */
+  selectedRows() {
+    const g = this.range();
+    if (!g) return [];
+    const out = [];
+    for (let r = g.r0; r <= g.r1; r++) out.push(this.view[r]);
+    return out;
+  }
+
+  /** Takes rows out (indexes in `this.rows`), keeping the sort; the selection goes. */
+  removeRows(indexes) {
+    const gone = new Set(indexes);
+    this.rows = this.rows.filter((_, i) => !gone.has(i));
+    this.sel = null;
+    this.anchor = null;
+    this.rowMode = false;
+    this.applySort();
+    this.paint(true);
   }
 
   selectedValue() {

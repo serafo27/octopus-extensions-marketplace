@@ -242,16 +242,70 @@ def _engines(conn, tables):
 
 
 def _key(conn, schema, table):
-    """The primary key's columns, and whether it's a single AUTO_INCREMENT column."""
+    """The primary key's columns, and whether it's a single AUTO_INCREMENT column. SHOW, not information_schema:
+    it also sees the session's temporary tables."""
+    qtable = (_ident(schema) + "." if schema else "") + _ident(table)
     with conn.cursor() as cur:
-        cur.execute("""SELECT k.COLUMN_NAME, c.EXTRA FROM information_schema.KEY_COLUMN_USAGE k
-                       JOIN information_schema.COLUMNS c ON c.TABLE_SCHEMA = k.TABLE_SCHEMA
-                        AND c.TABLE_NAME = k.TABLE_NAME AND c.COLUMN_NAME = k.COLUMN_NAME
-                       WHERE k.TABLE_SCHEMA = COALESCE(%s, DATABASE()) AND k.TABLE_NAME = %s
-                         AND k.CONSTRAINT_NAME = 'PRIMARY' ORDER BY k.ORDINAL_POSITION""", (schema, table))
-        rows = cur.fetchall()
-    cols = [r[0] for r in rows]
-    return cols, len(rows) == 1 and "auto_increment" in (rows[0][1] or "").lower()
+        cur.execute(f"SHOW KEYS FROM {qtable} WHERE Key_name = 'PRIMARY'")
+        names = [d[0] for d in cur.description]
+        rows = sorted(cur.fetchall(), key=lambda r: r[names.index("Seq_in_index")])
+        cols = [r[names.index("Column_name")] for r in rows]
+        auto = False
+        if len(cols) == 1:
+            cur.execute(f"SHOW COLUMNS FROM {qtable} LIKE %s", (cols[0],))
+            row = cur.fetchone()
+            auto = bool(row) and "auto_increment" in (row[5] or "").lower()
+    return cols, auto
+
+
+def _create_temporary(conn, create):
+    """Runs a CREATE TABLE as CREATE TEMPORARY TABLE (sqltext.create_table's output): no implicit commit, and the
+    table goes with the session, which a dry run always drops."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute(create["temp_sql"])
+    except pymysql.err.MySQLError as e:
+        if create["foreign_keys"] and "foreign" in str(e).lower():
+            raise DryRunRefused(f"{create['table']} has foreign keys, and a dry run creates it as a temporary table, "
+                                f"which can't have them: it can't be tried this way. ({error_message(e)})")
+        if e.args and e.args[0] in (1044, 1142, 1227):
+            raise DryRunRefused(f"A dry run creates {create['table']} as a temporary table, and this user can't "
+                                f"(it needs the CREATE TEMPORARY TABLES privilege). ({error_message(e)})")
+        raise
+
+
+def dry_create(conn, create):
+    """CREATE TABLE, tried as a temporary table: MySQL checks the whole definition, and the result is the table it
+    would make (its columns as SHOW FULL COLUMNS gives them)."""
+    schema, table = create["schema"], create["table"]
+    out = {"mode": "create", "kind": "CREATE", "table": table, "affected": None, "matched": None, "columns": [],
+           "rows": [], "notes": []}
+    if _engines(conn, [(schema, table)]):
+        if create["if_not_exists"]:
+            out["notes"].append(f"{table} already exists: with IF NOT EXISTS the statement does nothing (a warning).")
+            out["shown"] = 0
+            return out
+        raise DryRunRefused(f"{table} already exists here: CREATE TABLE would fail (MySQL error 1050).")
+    _create_temporary(conn, create)
+    qtable = (_ident(schema) + "." if schema else "") + _ident(table)
+    cols, rows = _select(conn, f"SHOW FULL COLUMNS FROM {qtable}")
+    keep = [i for i, c in enumerate(cols) if c["name"] != "Privileges"]
+    out["columns"] = [cols[i] for i in keep]
+    out["rows"] = [[value(r[i]) for i in keep] for r in rows]
+    out["shown"] = len(out["rows"])
+    with conn.cursor() as cur:
+        cur.execute(f"SHOW KEYS FROM {qtable}")
+        names = [d[0] for d in cur.description]
+        idx = {}
+        for r in cur.fetchall():
+            idx.setdefault(r[names.index("Key_name")], []).append(r[names.index("Column_name")])
+    if idx:
+        out["notes"].append("Indexes: " + "; ".join(f"{k} ({', '.join(v)})" for k, v in idx.items()) + ".")
+    if create["foreign_keys"]:
+        out["notes"].append("Foreign keys aren't checked: temporary tables ignore them.")
+    out["notes"].append("Created as a temporary table in a session of its own, then dropped with it: nothing was "
+                        "committed. The definition is MySQL's own check of the statement.")
+    return out
 
 
 def _select(conn, sql, args=None, cap=None):
@@ -262,16 +316,31 @@ def _select(conn, sql, args=None, cap=None):
     return cols, [list(r) for r in rows]
 
 
-def dry_run(conn, sql, info, cap):
+def dry_run(conn, sql, info, cap, setup=()):
     """Runs a data-changing statement inside a transaction, reads what it changed, and rolls it back.
     `info` is sqltext.parse_dml(sql). Returns the preview: {mode, table, columns, rows, matched, affected, shown,
     notes}. Rows are op ("~" changed, "=" unchanged, "−" deleted, "+" inserted) then cells; a changed cell is
-    {"$diff": [before, after]}. The caller drops the connection afterwards, whatever happens."""
+    {"$diff": [before, after]}. The caller drops the connection afterwards, whatever happens.
+    `setup`: CREATE TABLEs written before the statement (sqltext.create_table's output); a table it targets that
+    doesn't exist yet is created from them as a temporary table, so a script's INSERTs can be tried before its CREATE
+    has really run."""
     notes = []
     targets = [(info["schema"], info["table"])] if info["table"] else _tables_in(sql)
     found = _engines(conn, targets)
-    if info["table"] and not found:
-        raise DryRunRefused(f"No table {info['table']} here.")
+    made = set()
+    missing = {t.lower() for _, t in targets} - {t.lower() for _, t in found}
+    for create in reversed(list(setup)):  # the latest CREATE of a table is the one that counts
+        k = create["table"].lower()
+        if k in missing and k not in made:
+            _create_temporary(conn, create)
+            made.add(k)
+            notes.append(f"{create['table']} doesn't exist yet: it was created as a temporary table from the CREATE "
+                         f"TABLE above it, for this preview only. Run that CREATE before applying this for real.")
+    if info["table"] and not found and not made:
+        raise DryRunRefused(f"There's no table {info['table']} in {'`' + info['schema'] + '`' if info['schema'] else 'this database'}"
+                            f"{'' if info['schema'] else ' (the one picked beside the connection)'}. If the script creates "
+                            f"it, put its CREATE TABLE above this statement in the editor, and the dry run will create it "
+                            f"as a temporary table first.")
     for (schema, table), (engine, kind) in found.items():
         if kind == "VIEW":
             raise DryRunRefused(f"{table} is a view: a dry run works on tables (it needs their engine's rollback).")
@@ -318,7 +387,7 @@ def dry_run(conn, sql, info, cap):
         conn.rollback()
 
     out = {"mode": "count", "table": info["table"], "kind": kind, "affected": affected, "matched": matched,
-           "warnings": warnings, "columns": [], "rows": [], "notes": notes}
+           "warnings": warnings, "columns": [], "rows": [], "notes": notes, "temporary": sorted(made)}
     if single and kind == "UPDATE":
         out["unchanged"] = (matched or 0) - affected
         if not pk:
@@ -351,7 +420,8 @@ def dry_run(conn, sql, info, cap):
         out["mode"] = "insert"
         out["columns"] = [{"name": "", "type": "op"}] + after_cols
         out["rows"] = [[{"$op": "+"}] + [value(v) for v in r] for r in after]
-        notes.append("The AUTO_INCREMENT counter isn't rolled back by MySQL: real inserts will get later ids.")
+        if not made:
+            notes.append("The AUTO_INCREMENT counter isn't rolled back by MySQL: real inserts will get later ids.")
         if kind == "REPLACE":
             notes.append("REPLACE counts a replaced row twice (deleted + inserted).")
     elif kind in ("INSERT", "REPLACE"):

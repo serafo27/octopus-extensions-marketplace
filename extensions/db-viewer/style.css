@@ -1266,3 +1266,67 @@ dialog.modal.import {
 .node .badge[data-act] {
   cursor: pointer;
 }
+
+/* A script's log: one line per statement, above the last result set. */
+.script-log {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 40vh;
+  overflow: auto;
+  counter-reset: st;
+}
+.script-log li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+  counter-increment: st;
+}
+.script-log li::before {
+  content: counter(st) ".";
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  min-width: 2.5ch;
+  text-align: right;
+}
+.script-log .st {
+  min-width: 42px;
+  text-align: center;
+}
+.script-log .stmt {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg);
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.script-log .what {
+  color: var(--fg-strong);
+}
+.script-log .skipped .stmt {
+  color: var(--fg-faint);
+}
+.script-log .err {
+  flex-basis: 100%;
+  padding-left: calc(2.5ch + 58px);
+  color: var(--error);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+.script-list {
+  margin: 6px 0;
+  padding-left: 22px;
+  max-height: 200px;
+  overflow: auto;
+  font-size: 12px;
+}
+.res-msg.notes:has(.script-log) {
+  order: -1;
+  border-bottom: 1px solid var(--border);
+}

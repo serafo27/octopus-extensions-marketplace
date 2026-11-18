@@ -227,3 +227,26 @@ def parse_dml(sql):
     out["order"] = re.sub(r"^BY\b", "", order, flags=re.I).strip() if order else None
     out["limit"] = clause("LIMIT", ())
     return out
+
+
+def create_table(sql):
+    """`CREATE TABLE [IF NOT EXISTS] [db.]t …` → {schema, table, temp_sql, if_not_exists}, where temp_sql is the same
+    statement as CREATE TEMPORARY TABLE (which MySQL doesn't commit, and which goes with its session). None for any
+    other statement, and for CREATE TEMPORARY TABLE itself."""
+    sql = strip_trailing(sql)
+    words = [(w, s, e) for w, s, e in top_level_words(sql) if w != ";"]
+    if len(words) < 3 or words[0][0] != "CREATE" or words[1][0] != "TABLE":
+        return None
+    rest = sql[words[1][2]:]
+    m = re.match(r"\s*IF\s+NOT\s+EXISTS\b", rest, re.I)
+    if_not_exists = bool(m)
+    if m:
+        rest = rest[m.end():]
+    m = re.match(rf"\s*({_IDENT})(?:\s*\.\s*({_IDENT}))?", rest)
+    if not m:
+        return None
+    a, b = m.group(1), m.group(2)
+    schema, table = (_unquote(a), _unquote(b)) if b else (None, _unquote(a))
+    temp_sql = sql[:words[1][1]] + "TEMPORARY " + sql[words[1][1]:]
+    return {"schema": schema, "table": table, "temp_sql": temp_sql, "if_not_exists": if_not_exists,
+            "foreign_keys": bool(re.search(r"\bREFERENCES\b", sql, re.I))}

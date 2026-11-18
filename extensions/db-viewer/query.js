@@ -2,9 +2,9 @@
 // rows capped, time, thread) — the statement is killed on the server when it outlives the connection's timeout.
 import { call, wire } from "./api.js";
 import { Completer } from "./complete.js";
-import { cellText, Grid, toCsv, toJson, toTsv } from "./grid.js";
+import { cellText, Grid, isWhole, sqlLiteral, toCsv, toJson, toTsv } from "./grid.js";
 import { icons } from "./icons.js";
-import { highlight, statementAt, tokenize } from "./sql.js";
+import { highlight, statementAt, statements, tokenize } from "./sql.js";
 import { confirmDialog, contextMenu, esc, fmtMs, fmtNum, modal } from "./ui.js";
 
 export function showValue(column, v) {
@@ -43,12 +43,29 @@ export function envBanner(el, c) {
       : `<b>STAGING</b><span>${esc(c.name)}${c.readOnly ? " · read-only" : ""}</span>`;
 }
 
+const READ_KINDS = new Set(["SELECT", "WITH", "SHOW", "DESC", "DESCRIBE", "EXPLAIN", "TABLE", "VALUES", "HELP"]);
+/** The statement's first keyword (SELECT, CREATE…), past comments. */
+const firstWord = (sql) => (/^[A-Za-z_]+/.exec(sql.replace(/--[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\//g, "").trim())?.[0] || "").toUpperCase();
+/** "CREATE, 3 × INSERT" */
+const kindsOf = (items) => {
+  const n = new Map();
+  for (const it of items) n.set(it.kind, (n.get(it.kind) || 0) + 1);
+  return [...n].map(([k, c]) => (c > 1 ? `${c} × ${k}` : k)).join(", ");
+};
+
 /** Asks before a write: "run", "dry" (preview it first, when it can be) or null. */
-async function confirmWrite(conn, kind, html) {
-  const dryable = /^(UPDATE|DELETE|INSERT|REPLACE)$/.test(kind);
+async function confirmWrite(conn, kind, html, sql = "") {
+  const create = kind === "CREATE" && /^create\s+table\b/i.test(sql.replace(/--[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\//g, "").trim());
+  const dryable = create || /^(UPDATE|DELETE|INSERT|REPLACE)$/.test(kind);
   return modal({
     title: `Run ${kind}?`,
-    body: html + (dryable ? '<p class="muted small">Dry run executes it in a transaction, shows the rows before → after, and rolls it back.</p>' : ""),
+    body:
+      html +
+      (create
+        ? '<p class="muted small">Dry run creates it as a temporary table in a session of its own, shows its columns, and drops it.</p>'
+        : dryable
+          ? '<p class="muted small">Dry run executes it in a transaction, shows the rows before → after, and rolls it back.</p>'
+          : ""),
     onOpen: (dlg) => dlg.querySelector(".modal-foot button")?.focus(),
     buttons: [
       { label: "Cancel", value: null, cls: "ghost" },
@@ -80,6 +97,7 @@ export class QueryTab {
     this.el.innerHTML = `
       <div class="toolbar q-toolbar">
         <button class="primary run" title="Run the statement under the cursor, or the selection (⌘↵)">${icons.play}<span>Run</span></button>
+        <button class="ghost runall" title="Run all the statements of the editor, one after the other, stopping at the first error (⌥⌘↵)">${icons.play}<span>Run all</span></button>
         <button class="ghost stop" title="Kill the running statement on the server (Esc)" hidden>${icons.stop}<span>Stop</span></button>
         <button class="ghost explain" title="EXPLAIN the statement under the cursor: how MySQL would run it, without running it">${icons.info}<span>Explain</span></button>
         <button class="ghost dryrun" title="Dry run (⇧⌘↵): run the change in a transaction, show the rows before → after, roll it back" hidden>${icons.beaker}<span>Dry run</span></button>
@@ -107,7 +125,7 @@ export class QueryTab {
     this.hl = this.el.querySelector(".hl");
     this.limitInput = this.el.querySelector(".limit input");
     this.schemaSel = this.el.querySelector("select.schema");
-    this.grid = new Grid(this.el.querySelector(".res-grid"), { onCellOpen: (col, v) => showValue(col, v) });
+    this.grid = new Grid(this.el.querySelector(".res-grid"), { onCellOpen: (col, v) => showValue(col, v), rowMenu: (rows) => this.rowMenu(rows) });
     this.ta.value = sql ?? "";
     this.limitInput.value = conn.rowLimit || 200;
     this.paintEditor();
@@ -173,6 +191,7 @@ export class QueryTab {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
         e.preventDefault();
         if (e.shiftKey) this.dryRun();
+        else if (e.altKey) this.runAll();
         else this.run();
       } else if (e.key === "Tab" && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
@@ -190,6 +209,7 @@ export class QueryTab {
     this.el.querySelector(".history").onclick = () => this.showHistory();
     this.el.querySelector(".save").onclick = (e) => this.app.saveTab(this, e.shiftKey);
     this.el.querySelector(".dryrun").onclick = () => this.dryRun();
+    this.el.querySelector(".runall").onclick = () => this.runAll();
     this.el.querySelector(".apply").onclick = () => {
       const sql = this.dryRunSql;
       this.el.querySelector(".apply").hidden = true;
@@ -242,6 +262,14 @@ export class QueryTab {
 
   async run(confirmed = false, sqlOverride = null, planChecked = false) {
     if (this.running) return;
+    if (!sqlOverride) {
+      // A selection holding several statements runs them all, in order.
+      const { selectionStart: a, selectionEnd: b, value } = this.ta;
+      if (b > a) {
+        const list = statements(value.slice(a, b)).map((st) => ({ ...st, start: st.start + a, end: st.end + a }));
+        if (list.length > 1) return this.runScript(list);
+      }
+    }
     const conn = this.conn;
     const sql = sqlOverride ?? this.target();
     if (!sql) return;
@@ -298,6 +326,7 @@ export class QueryTab {
             (/^(UPDATE|DELETE)$/.test(e.data.kind) && !tokenize(sql).some((t) => t.type === "kw" && t.text.toUpperCase() === "WHERE")
               ? `<p class="error-text"><b>No WHERE clause:</b> every row of the table will change.</p>`
               : ""),
+          sql,
         );
         if (choice === "dry") return this.dryRun(sql);
         if (choice === "run") return this.run(true, sql, planChecked);
@@ -328,7 +357,15 @@ export class QueryTab {
     const info = this.el.querySelector(".res-info");
     info.innerHTML = '<span class="spinner"></span> Dry run: executing in a transaction…';
     try {
-      const r = await call("/dryrun", { conn: wire(conn), sql, schema: this.schema, queryId }, { timeoutMs: conn.timeoutMs + 30000 });
+      // CREATE TABLEs above the statement: the helper creates the ones it needs (and that don't exist yet) as
+      // temporary tables, so a script's INSERTs can be tried before its CREATE has run.
+      const { selectionStart: a, selectionEnd: b, value } = this.ta;
+      const from = b > a && value.slice(a, b).trim() ? a : (statementAt(value, a)?.start ?? a);
+      const setup = statements(value)
+        .filter((s) => s.end <= from)
+        .map((s) => s.text.trim())
+        .filter((t) => /^create\s+table\b/i.test(t.replace(/--[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\//g, "").trim()));
+      const r = await call("/dryrun", { conn: wire(conn), sql, schema: this.schema, queryId, setup }, { timeoutMs: conn.timeoutMs + 30000 });
       this.showDryRun(r, sql, Date.now() - started);
     } catch (e) {
       this.showError(e, Date.now() - started);
@@ -346,18 +383,21 @@ export class QueryTab {
     const gridEl = this.el.querySelector(".res-grid");
     const n = (x, w) => `<b>${fmtNum(x)}</b> ${w}${x === 1 ? "" : "s"}`;
     const what =
-      r.kind === "UPDATE"
+      r.kind === "CREATE"
+        ? r.rows.length ? `table would be created with ${n(r.rows.length, "column")}` : "nothing would be created"
+        : r.kind === "UPDATE"
         ? `${n(r.affected, "row")} would change${r.matched !== null && r.matched !== undefined ? ` (${fmtNum(r.matched)} matched${r.unchanged ? `, ${fmtNum(r.unchanged)} already as set` : ""})` : ""}`
         : r.kind === "DELETE"
           ? `${n(r.affected, "row")} would be deleted`
           : `${n(r.affected, "row")} would be ${r.kind === "REPLACE" ? "written" : "inserted"}`;
     info.className = "res-info";
     info.innerHTML =
-      `<span class="badge dry">DRY RUN · rolled back</span> ${what} in <b>${esc(r.table || "several tables")}</b>` +
+      `<span class="badge dry">DRY RUN · ${r.kind === "CREATE" ? "temporary table, dropped" : "rolled back"}</span> ${what}${r.kind === "CREATE" ? ":" : " in"} <b>${esc(r.table || "several tables")}</b>` +
       (r.shown && r.shown < (r.matched ?? r.affected) ? ` · <span class="faint">first ${fmtNum(r.shown)} shown</span>` : "") +
       ` <span class="faint">· ${fmtMs(totalMs)}</span>`;
     this.el.querySelector(".res-actions").hidden = !r.rows.length;
-    this.el.querySelector(".apply").hidden = r.affected === 0;
+    // Not when the table only existed as a temporary one for the preview: applying would fail.
+    this.el.querySelector(".apply").hidden = r.affected === 0 || (r.kind === "CREATE" && !r.rows.length) || !!r.temporary?.length;
     const notes = r.notes.map((t) => `<li>${esc(t)}</li>`).join("");
     if (r.rows.length) {
       gridEl.hidden = false;
@@ -373,8 +413,222 @@ export class QueryTab {
     }
   }
 
+  /** Context-menu items for the selected result rows: deleting them, on a writable connection, when the result
+   * comes from a plain SELECT on one table. */
+  rowMenu(rows) {
+    const conn = this.conn;
+    const r = this.result;
+    if (!rows.length || conn.readOnly || conn.env === "prod" || !r?.columns?.length || r.kind === "CREATE" || r.mode) return [];
+    const src = singleTableRef(r.executedSql || "");
+    if (!src) return [];
+    return [{ label: rows.length === 1 ? "Delete row…" : `Delete ${rows.length} rows…`, action: () => this.deleteRows(rows, src) }];
+  }
+
+  async deleteRows(rows, src) {
+    const conn = this.conn;
+    const schema = src.schema || this.schema;
+    if (!schema) return octopus.toast("Pick a database first: the table's primary key is needed.", "error");
+    const cols = await this.app.columnsOf(conn.id, schema, src.table, true);
+    if (!cols) return octopus.toast(`Can't read the columns of ${src.table}.`, "error");
+    const pk = cols.filter((c) => c.key === "PRI").sort((a, b) => a.position - b.position).map((c) => c.name);
+    if (!pk.length) return octopus.toast(`${src.table} has no primary key: rows can't be told apart safely, write the DELETE by hand.`, "error");
+    const names = this.grid.columns.map((c) => c.name);
+    const at = pk.map((k) => names.indexOf(k));
+    if (at.includes(-1)) {
+      const missing = pk.filter((_, i) => at[i] < 0);
+      return octopus.toast(`The result doesn't have the primary key (${missing.join(", ")}): add it to the SELECT.`, "error");
+    }
+    const keys = rows.map((i) => at.map((j) => this.grid.rows[i][j]));
+    if (keys.some((k) => k.some((v) => v === null || !isWhole(v)))) {
+      return octopus.toast("A key value is cut or NULL in the result: can't build an exact DELETE.", "error");
+    }
+    const id = (n) => "`" + String(n).replace(/`/g, "``") + "`";
+    const where =
+      pk.length === 1
+        ? keys.length === 1
+          ? `${id(pk[0])} = ${sqlLiteral(keys[0][0])}`
+          : `${id(pk[0])} IN (${keys.map((k) => sqlLiteral(k[0])).join(", ")})`
+        : keys.length === 1
+          ? pk.map((k, i) => `${id(k)} = ${sqlLiteral(keys[0][i])}`).join(" AND ")
+          : `(${pk.map(id).join(", ")}) IN (${keys.map((k) => `(${k.map(sqlLiteral).join(", ")})`).join(", ")})`;
+    const sql = `DELETE FROM ${id(schema)}.${id(src.table)}\nWHERE ${where}\nLIMIT ${keys.length}`;
+    const n = keys.length === 1 ? "1 row" : `${keys.length} rows`;
+    const choice = await modal({
+      title: `Delete ${n}?`,
+      body:
+        `<p>On <b>${esc(conn.name)}</b>, by primary key, this statement will run:</p>` +
+        `<pre class="value-view small sql-preview">${highlight(sql)}</pre>` +
+        `<p class="muted small">It commits at once. Dry run executes it in a transaction, shows the rows it deletes, and rolls it back.</p>`,
+      wide: true,
+      onOpen: (dlg) => dlg.querySelector(".modal-foot button")?.focus(),
+      buttons: [
+        { label: "Cancel", value: null, cls: "ghost" },
+        { label: "Copy", value: "copy", cls: "ghost" },
+        { label: "Dry run", value: "dry", cls: "ghost" },
+        { label: `Delete ${n}`, value: "run", cls: "danger", submit: true },
+      ],
+    });
+    if (choice === "copy") return (octopus.copy(sql), octopus.toast("Copied", "info"));
+    if (choice === "dry") return this.dryRun(sql);
+    if (choice !== "run" || this.running) return;
+    const queryId = crypto.randomUUID();
+    this.running = { queryId, started: Date.now() };
+    this.setRunning(true);
+    try {
+      const r = await call("/query", { conn: wire(conn), sql, schema: this.schema, queryId, confirmed: true }, { timeoutMs: conn.timeoutMs + 30000 });
+      this.app.addHistory({ connId: conn.id, schema: this.schema, sql, at: Date.now(), ms: r.elapsedMs, affected: r.affectedRows });
+      this.grid.removeRows(rows);
+      this.result.rows = this.grid.rows;
+      const info = this.el.querySelector(".res-info");
+      info.innerHTML = `<b>${fmtNum(this.grid.rows.length)}</b> row${this.grid.rows.length === 1 ? "" : "s"} · <span class="badge ${r.affectedRows === keys.length ? "success" : "warn"}">${fmtNum(r.affectedRows)} deleted</span> <span class="faint">· ${fmtMs(r.elapsedMs)}</span>`;
+      if (r.affectedRows !== keys.length) octopus.toast(`${r.affectedRows} of ${keys.length} rows deleted: the others were already gone.`, "info");
+      else octopus.toast(`Deleted ${n}`, "success");
+    } catch (e) {
+      this.app.addHistory({ connId: conn.id, schema: this.schema, sql, at: Date.now(), error: e.message });
+      octopus.toast(e.message, "error");
+    } finally {
+      this.running = null;
+      this.setRunning(false);
+    }
+  }
+
+  /** Every statement of the editor, in order. */
+  runAll() {
+    const list = statements(this.ta.value);
+    if (list.length === 1) return this.run(false, list[0].text.trim());
+    if (list.length) return this.runScript(list);
+  }
+
+  /** Runs statements one after the other ({start, end, text} in the editor), each as its own request to the helper:
+   * one confirmation for all the writes, the plan check per SELECT, stop at the first error (it's then selected in
+   * the editor). The last result set stays in the grid; the log of what ran is in the result's header. */
+  async runScript(list) {
+    if (this.running) return;
+    const conn = this.conn;
+    const items = list.map((st) => ({ ...st, sql: st.text.trim(), kind: firstWord(st.text) }));
+    const writes = items.filter((it) => !READ_KINDS.has(it.kind));
+    if (writes.length && conn.readOnly) {
+      return this.showError(new Error(`This connection is read-only, and the script changes data (${kindsOf(writes)}): nothing was run. Turn off “Read-only” in the connection's settings to change data.`), 0);
+    }
+    if (writes.length) {
+      const ok = await confirmDialog(
+        `Run ${items.length} statements?`,
+        `<p>On <b>${esc(conn.name)}</b>${this.schema ? ` (database <b>${esc(this.schema)}</b>)` : ""}, one after the other, stopping at the first error. ` +
+          `${writes.length === items.length ? "All of them change" : `${writes.length} of them change`} the database: <b>${esc(kindsOf(writes))}</b>.</p>` +
+          `<ol class="script-list">${items.map((it) => `<li><code>${esc(it.sql.replace(/--[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " ").trim().slice(0, 120))}</code></li>`).join("")}</ol>` +
+          `<p class="muted small">Each statement commits on its own: when one fails, the ones before it stay done.</p>`,
+        `Run ${items.length} statements`,
+        true,
+        true,
+      );
+      if (!ok) {
+        this.el.querySelector(".res-info").textContent = "Not run.";
+        return;
+      }
+    }
+    const limit = Number(this.limitInput.value) || conn.rowLimit || 200;
+    const info = this.el.querySelector(".res-info");
+    const started = Date.now();
+    const log = [];
+    let last = null;
+    this.script = { stopped: false };
+    try {
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (this.script.stopped) {
+          log.push({ it, skipped: true });
+          continue;
+        }
+        let planChecked = false;
+        for (;;) {
+          const queryId = crypto.randomUUID();
+          const t0 = Date.now();
+          this.running = { queryId, started: t0 };
+          this.setRunning(true);
+          info.innerHTML = `<span class="spinner"></span> Statement ${i + 1} of ${items.length} (${esc(it.kind)})…`;
+          try {
+            const r = await call(
+              "/query",
+              { conn: wire(conn), sql: it.sql, schema: this.schema, limit, queryId, confirmed: true, planChecked },
+              { timeoutMs: conn.timeoutMs + 30000 },
+            );
+            log.push({ it, r });
+            if (r.columns.length || !last?.columns.length) last = r;
+            this.app.addHistory({ connId: conn.id, schema: this.schema, sql: it.sql, at: Date.now(), ms: r.elapsedMs, rows: r.rows?.length, affected: r.affectedRows });
+            break;
+          } catch (e) {
+            if (e.status === 409 && e.data?.needsPlanConfirm && !planChecked) {
+              this.running = null;
+              this.setRunning(false);
+              const ok = await confirmDialog(
+                `Statement ${i + 1} looks expensive`,
+                `<p>MySQL's plan says:</p><ul class="plan-warnings">${e.data.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` + planTable(e.data.plan),
+                "Run anyway",
+                true,
+                true,
+              );
+              if (ok) {
+                planChecked = true;
+                continue;
+              }
+              e.message = "Not run: the plan looked expensive.";
+            }
+            log.push({ it, error: e });
+            this.app.addHistory({ connId: conn.id, schema: this.schema, sql: it.sql, at: Date.now(), error: e.message });
+            this.script.stopped = true;
+            break;
+          }
+        }
+      }
+    } finally {
+      this.running = null;
+      this.script = null;
+      this.setRunning(false);
+    }
+    if (!this.app.isConnected(conn.id)) this.app.schemasOf(conn.id);
+    this.showScript(log, last, Date.now() - started);
+  }
+
+  showScript(log, last, totalMs) {
+    const done = log.filter((l) => l.r).length;
+    const failed = log.find((l) => l.error);
+    const skipped = log.filter((l) => l.skipped).length;
+    // One line per statement: its first words, then what it did.
+    const line = (l) => {
+      const head = l.it.sql.replace(/--[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " ").trim();
+      const stmt = `<code class="stmt" title="${esc(head.slice(0, 500))}">${esc(head.length > 70 ? head.slice(0, 70) + "…" : head)}</code>`;
+      if (l.skipped) return `<li class="skipped"><span class="st faint">not run</span>${stmt}</li>`;
+      if (l.error) return `<li class="failed"><span class="st badge error">error</span>${stmt}<div class="err">${esc(l.error.message)}</div></li>`;
+      const r = l.r;
+      const what = r.columns.length
+        ? `${fmtNum(r.rows.length)} row${r.rows.length === 1 ? "" : "s"}${r.truncated ? "+" : ""}`
+        : `${fmtNum(r.affectedRows)} affected`;
+      return `<li><span class="st badge success">ok</span>${stmt}<span class="what">${what}</span><span class="faint">${fmtMs(r.elapsedMs)}</span></li>`;
+    };
+    const summary =
+      `<span class="badge ${failed ? "error" : "success"}">${done} of ${log.length} statements run</span>` +
+      (skipped ? ` <span class="faint">· ${skipped} not run</span>` : "") +
+      ` <span class="faint">· ${fmtMs(totalMs)}</span>`;
+    if (failed) {
+      this.showError(failed.error, totalMs);
+      this.ta.focus();
+      this.ta.setSelectionRange(failed.it.start, failed.it.end);
+    } else if (last) {
+      this.showResult(last, totalMs);
+    }
+    const info = this.el.querySelector(".res-info");
+    const msg = this.el.querySelector(".res-msg");
+    info.className = "res-info";
+    info.innerHTML = summary + (!failed && last?.columns.length ? ` <span class="faint">· last result: ${fmtNum(last.rows.length)} rows</span>` : "");
+    msg.hidden = false;
+    msg.className = "res-msg notes";
+    msg.innerHTML = `<ol class="script-log">${log.map(line).join("")}</ol>`;
+    if (failed || !last?.columns.length) this.el.querySelector(".res-grid").hidden = true;
+  }
+
   async stop() {
     if (!this.running) return;
+    if (this.script) this.script.stopped = true;
     this.el.querySelector(".res-info").innerHTML = '<span class="spinner"></span> Killing the statement on the server…';
     try {
       await call("/cancel", { queryId: this.running.queryId });
@@ -387,6 +641,7 @@ export class QueryTab {
     this.el.querySelector(".run").hidden = on;
     this.el.querySelector(".explain").disabled = on;
     this.el.querySelector(".dryrun").disabled = on;
+    this.el.querySelector(".runall").hidden = on;
     if (on) this.el.querySelector(".apply").hidden = true;
     this.el.querySelector(".stop").hidden = !on;
     this.app.tabChanged(this);
@@ -496,6 +751,14 @@ export class QueryTab {
   serialize() {
     return { kind: "query", connId: this.connId, schema: this.schema, sql: this.ta.value, savedId: this.savedId };
   }
+}
+
+// {schema, table} a plain single-table SELECT reads; null with joins, subqueries or unions.
+function singleTableRef(sql) {
+  if (!/^\s*SELECT\b/i.test(sql) || /\b(JOIN|UNION)\b|\(\s*SELECT\b/i.test(sql)) return null;
+  const m = /\bFROM\s+(?:(`(?:[^`]|``)+`|\w+)\s*\.\s*)?(`(?:[^`]|``)+`|\w+)\s*(?:$|[\s;])(?!\s*,)/i.exec(sql);
+  const unq = (n) => (n && n.startsWith("`") ? n.slice(1, -1).replace(/``/g, "`") : n);
+  return m ? { schema: unq(m[1]) || null, table: unq(m[2]) } : null;
 }
 
 // The table a plain single-table SELECT reads (for "Copy as INSERT"); null with joins, subqueries or unions.

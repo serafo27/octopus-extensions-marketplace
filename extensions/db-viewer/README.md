@@ -10,7 +10,11 @@ Browse and query MySQL (and MariaDB) from Octopus.
 - **Query tab**: highlighted editor, ⌘↵ runs the statement under the cursor (or the selection), Explain,
   autocomplete (⌃Space; `alias.` → that table's columns), virtual result grid (sort, resize, double-click a value or click ⤢ on a cut-off selected cell to see it whole;
   select a cell, a range by drag / ⇧click / ⇧arrows, rows by their number, all with ⌘A; ⌘C copies it tab-separated,
-  ⇧⌘C with column names, right-click to copy rows as TSV, CSV, JSON or INSERT), export to TSV/CSV/JSON, per-connection history. ⌘T new query, ⌘W close tab.
+  ⇧⌘C with column names, right-click to copy rows as TSV, CSV, JSON or INSERT; on a writable connection, when the result is a plain SELECT on one
+  table that includes its primary key, right-click → Delete row(s) shows the `DELETE … WHERE <pk> … LIMIT n` it will run
+  and asks, with Dry run and Copy beside it), export to TSV/CSV/JSON, per-connection history. **Run all** (⌥⌘↵), or Run on a selection
+  spanning several statements, runs them one after the other (one confirmation for the writes, stopping at the first
+  error, which gets selected) and lists each statement with its outcome above the last result set. ⌘T new query, ⌘W close tab.
 - **Connect / Disconnect**: a connection connects when you expand it (or run a query on it) and stays connected
   until Disconnect, which closes its sessions on the server (killing what runs), forgets its tree and collapses it.
   Nothing reconnects by itself after that. The green dot means connected.
@@ -26,7 +30,11 @@ Browse and query MySQL (and MariaDB) from Octopus.
   DELETE / INSERT / REPLACE runs inside a transaction, the helper reads the rows before and after, then rolls back and
   drops the session. The grid shows each row's change (`~` changed, `=` matched but already so, `−` deleted, `+`
   inserted) and each changed value as old → new; "Apply for real" then runs it. Limits, said in the preview:
-  DDL (ALTER, CREATE, DROP, TRUNCATE…) is committed by MySQL at once, so it's refused; so are non-InnoDB tables
+  `CREATE TABLE` is tried as `CREATE TEMPORARY TABLE` in a session of its own (MySQL checks the definition; the
+  preview lists the columns and indexes it would make; nothing is committed, the table goes with the session; foreign
+  keys can't be tried this way). An UPDATE / DELETE / INSERT on a table that doesn't exist yet but is created by a
+  `CREATE TABLE` above it in the editor runs against that table created as temporary first ("Apply for real" is then
+  hidden: run the CREATE first). Other DDL (ALTER, DROP, TRUNCATE…) is committed by MySQL at once, so it's refused; so are non-InnoDB tables
   (MyISAM can't roll back) and views. Several tables (JOINs) or no primary key: only counts. Up to 200 rows shown.
   MySQL doesn't roll back AUTO_INCREMENT counters, and triggers/cascades run (and roll back) unseen.
 - **Sessions tab** (pulse icon on a connection, or "N running" in the tree): what Db Viewer runs there (Stop), and
