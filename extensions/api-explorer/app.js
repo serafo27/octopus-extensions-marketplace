@@ -3,7 +3,7 @@ import { h, prompt, confirmBox, menu, dragger, formatBytes, formatMs, tabIndent,
 import { kvEditor } from "./kv.js";
 import {
   scope, isDynamic, prepare, send, toCurl, fromCurl, looksLikeCurl, effectiveAuth,
-  paramsFromUrl, urlFromParams, statusText,
+  paramsFromUrl, urlFromParams, statusText, jsonCommentRanges, stripJsonComments,
 } from "./http.js";
 import { fromPostman, toPostman, envToPostman } from "./postman.js";
 import { prettyJson, prettyMarkup } from "./highlight.js";
@@ -827,7 +827,7 @@ function bodyEditor(req, changed, vctx) {
         if (b.mode !== "json" || !b.raw.trim()) return status.replaceChildren();
         try {
           // Variables outside strings ({{n}}) are fine: check with them as numbers.
-          JSON.parse(b.raw.replace(/\{\{[^{}]+\}\}/g, "0"));
+          JSON.parse(stripJsonComments(b.raw).replace(/\{\{[^{}]+\}\}/g, "0"));
           status.replaceChildren();
         } catch (e) {
           status.replaceChildren(h("span", { class: "warn-text" }, "Invalid JSON: " + e.message.replace(/^JSON\.parse: /, "")));
@@ -840,9 +840,12 @@ function bodyEditor(req, changed, vctx) {
       };
       check();
       if (b.mode === "json")
-        modes.append(h("div", { class: "grow" }), status, h("button", { class: "ghost small", onclick: () => {
+        modes.append(h("div", { class: "grow" }), status, h("button", { class: "ghost small", onclick: async () => {
           try {
-            b.raw = JSON.stringify(JSON.parse(b.raw), null, 2);
+            const plain = stripJsonComments(b.raw);
+            const pretty = JSON.stringify(JSON.parse(plain), null, 2);
+            if (plain !== b.raw && !(await confirmBox("Beautify", "Beautifying removes the comments from the body.", "Beautify"))) return;
+            b.raw = pretty;
             ta.value = b.raw;
             ta.paintVars();
             check();
@@ -851,7 +854,7 @@ function bodyEditor(req, changed, vctx) {
             octopus.toast("Not valid JSON", "error");
           }
         } }, "Beautify"));
-      children.push(varField(ta, vctx));
+      children.push(varField(ta, vctx, { comments: b.mode === "json" ? jsonCommentRanges : null }));
     } else if (b.mode === "form" || b.mode === "urlencoded") {
       children.push(kvEditor(b.form, changed, { keyPh: "Field", vars: vctx }));
     } else children.push(h("p", { class: "faint note" }, "This request has no body."));

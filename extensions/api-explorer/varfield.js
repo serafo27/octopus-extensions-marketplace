@@ -1,7 +1,8 @@
 // {{variable}} highlighting in inputs and textareas, with a tooltip to see, edit or define a variable.
 //
 // A layer with the same text sits over the field (which draws its text transparent) and colours the
-// variables: found ones in one colour, undefined ones in red. `ctx`:
+// variables: found ones in one colour, undefined ones in red. With `opts.comments(text)` -> [[start, end]…]
+// it also colours those ranges as comments (variables inside them aren't highlighted). `ctx`:
 //   lookup(name) -> { value, source: "env" | "collection" | "dynamic", scopeName } | null
 //   set(name, value)            changes a variable where lookup found it
 //   add(name, value, where)     defines it in "env" or "collection"
@@ -26,7 +27,7 @@ export function refreshVarFields() {
 }
 
 /** Wraps `el` (an input or textarea) and returns the wrapper to put where `el` would go. */
-export function varField(el, ctx) {
+export function varField(el, ctx, { comments = null } = {}) {
   const isArea = el.tagName === "TEXTAREA";
   const inner = h("div", { class: "vf-inner" });
   const back = h("div", { class: "vf-back" + (isArea ? " area" : "") }, inner);
@@ -44,18 +45,30 @@ export function varField(el, ctx) {
   const scroll = () => (inner.style.transform = `translate(${-el.scrollLeft}px, ${-el.scrollTop}px)`);
   const paint = () => {
     const v = el.value;
-    const off = el.type === "password" || v.length > MAX || !v.includes("{{");
+    const ranges = comments && v.length <= MAX && /\/[/*]/.test(v) ? comments(v) : [];
+    const off = el.type === "password" || v.length > MAX || (!v.includes("{{") && !ranges.length);
     wrap.classList.toggle("vf-off", off);
     if (off) return inner.replaceChildren();
     if (el.isConnected) copyStyle();
     const parts = [];
-    let last = 0;
-    for (const m of v.matchAll(VAR)) {
-      parts.push(v.slice(last, m.index));
-      parts.push(h("span", { class: "vf-var " + (ctx.lookup(m[1]) ? "ok" : "missing"), dataset: { name: m[1] } }, m[0]));
-      last = m.index + m[0].length;
+    const code = (a, b) => {
+      const t = v.slice(a, b);
+      let last = 0;
+      for (const m of t.matchAll(VAR)) {
+        parts.push(t.slice(last, m.index));
+        parts.push(h("span", { class: "vf-var " + (ctx.lookup(m[1]) ? "ok" : "missing"), dataset: { name: m[1] } }, m[0]));
+        last = m.index + m[0].length;
+      }
+      parts.push(t.slice(last));
+    };
+    let pos = 0;
+    for (const [a, b] of ranges) {
+      code(pos, a);
+      parts.push(h("span", { class: "vf-comment" }, v.slice(a, b)));
+      pos = b;
     }
-    parts.push(v.slice(last) + (isArea ? "\n " : ""));
+    code(pos, v.length);
+    if (isArea) parts.push("\n ");
     inner.replaceChildren(...parts);
     scroll();
   };

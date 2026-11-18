@@ -99,7 +99,7 @@ export function prepare(req, vars, ancestors = []) {
   let body;
   const b = req.body ?? { mode: "none" };
   if (b.mode === "json" || b.mode === "text") {
-    body = r(b.raw ?? "");
+    body = r(b.mode === "json" ? stripJsonComments(b.raw ?? "") : b.raw ?? "");
     if (!has(headers, "content-type")) headers["Content-Type"] = b.mode === "json" ? "application/json" : "text/plain";
   } else if (b.mode === "urlencoded") {
     body = (b.form ?? [])
@@ -118,6 +118,43 @@ export function prepare(req, vars, ancestors = []) {
     headers["Content-Type"] = "multipart/form-data; boundary=" + boundary;
   }
   return { method: req.method, url: url.replace(/[^\x21-\x7e]/g, (c) => encodeURIComponent(c)), headers, body };
+}
+
+/**
+ * Where the `//` and `/* *\/` comments of a JSON body are: [[start, end]…], end exclusive (a line comment
+ * stops before its newline). Text in double-quoted strings is skipped, so "http://x" is not a comment.
+ */
+export function jsonCommentRanges(s) {
+  const out = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '"') {
+      // A string ends at its closing quote, or at the line's end when it isn't closed.
+      for (i++; i < s.length && s[i] !== '"' && s[i] !== "\n"; i++) if (s[i] === "\\") i++;
+    } else if (c === "/" && s[i + 1] === "/") {
+      const end = s.indexOf("\n", i);
+      out.push([i, end < 0 ? s.length : end]);
+      i = end < 0 ? s.length : end;
+    } else if (c === "/" && s[i + 1] === "*") {
+      const end = s.indexOf("*/", i + 2);
+      out.push([i, end < 0 ? s.length : end + 2]);
+      i = (end < 0 ? s.length : end + 2) - 1;
+    }
+  }
+  return out;
+}
+
+/** The JSON body without its comments (sent and validated this way). */
+export function stripJsonComments(s) {
+  const ranges = jsonCommentRanges(s);
+  if (!ranges.length) return s;
+  let out = "";
+  let last = 0;
+  for (const [a, b] of ranges) {
+    out += s.slice(last, a);
+    last = b;
+  }
+  return out + s.slice(last);
 }
 
 function b64(s) {

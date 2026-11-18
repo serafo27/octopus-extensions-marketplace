@@ -12,6 +12,7 @@ body.dragging * {
 #app {
   display: grid;
   grid-template-columns: var(--side-w, 270px) 4px 1fr;
+  grid-template-rows: minmax(0, 1fr);
   height: 100vh;
 }
 .grow {
@@ -80,6 +81,7 @@ button.primary.danger {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   background: var(--bg-chrome, var(--bg-widget));
 }
 .side-tabs {
@@ -115,6 +117,7 @@ button.primary.danger {
 }
 .side-body {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding-bottom: 12px;
 }
@@ -864,6 +867,9 @@ pre.code {
 .vf-var.missing {
   color: var(--error);
   background: color-mix(in srgb, var(--error) 18%, transparent);
+}
+.vf-comment {
+  color: var(--hl-comment, var(--fg-faint));
 }
 .url-bar > .vf {
   flex: 1;
