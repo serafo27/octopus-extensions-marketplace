@@ -14,7 +14,9 @@ Browse and query MySQL (and MariaDB) from Octopus.
   table that includes its primary key, right-click → Delete row(s) shows the `DELETE … WHERE <pk> … LIMIT n` it will run
   and asks, with Dry run and Copy beside it), export to TSV/CSV/JSON, per-connection history. **Run all** (⌥⌘↵), or Run on a selection
   spanning several statements, runs them one after the other (one confirmation for the writes, stopping at the first
-  error, which gets selected) and lists each statement with its outcome above the last result set. ⌘T new query, ⌘W close tab.
+  error, which gets selected) and lists each statement with its outcome above the grid: click one to see its result
+  (or error), double-click to select it in the editor. A ▶ in the editor's gutter, on each statement's first line, runs
+  that statement alone. ⌘T new query, ⌘W close tab.
 - **Connect / Disconnect**: a connection connects when you expand it (or run a query on it) and stays connected
   until Disconnect, which closes its sessions on the server (killing what runs), forgets its tree and collapses it.
   Nothing reconnects by itself after that. The green dot means connected.

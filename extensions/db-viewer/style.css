@@ -1326,7 +1326,70 @@ dialog.modal.import {
   overflow: auto;
   font-size: 12px;
 }
-.res-msg.notes:has(.script-log) {
-  order: -1;
+.res-script {
+  flex: none;
+  padding: 2px 8px 4px;
   border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.script-log li[data-i] {
+  cursor: pointer;
+  border-radius: var(--radius-sm, 3px);
+}
+.script-log li[data-i]:hover {
+  background: var(--bg-hover);
+}
+.script-log li.selected,
+.script-log li.selected:hover {
+  background: var(--bg-selected);
+}
+
+/* The editor's gutter: a ▶ on the first line of each statement. */
+.editor textarea,
+.editor .hl {
+  padding-left: 28px;
+}
+.editor .gutter {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 24px;
+  overflow: hidden;
+  z-index: 1;
+  pointer-events: none;
+  background: var(--bg-editor);
+}
+.gutter-in {
+  position: relative;
+}
+.g-run {
+  position: absolute;
+  left: 4px;
+  width: 18px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  color: var(--success);
+  opacity: 0.55;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: auto;
+  border-radius: var(--radius-sm, 3px);
+}
+.g-run svg {
+  width: 11px;
+  height: 11px;
+}
+.g-run:hover {
+  opacity: 1;
+  background: var(--bg-hover);
+}
+.gutter.busy .g-run {
+  opacity: 0.2;
+  cursor: default;
+  pointer-events: none;
 }

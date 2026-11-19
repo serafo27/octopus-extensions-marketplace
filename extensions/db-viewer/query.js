@@ -110,7 +110,7 @@ export class QueryTab {
         <button class="ghost save" title="Save this query (⌘S; ⇧⌘S saves as a new one)">${icons.save}<span>Save</span></button>
         <button class="ghost icon history" title="History">${icons.history}</button>
       </div>
-      <div class="editor"><pre class="hl" aria-hidden="true"></pre><textarea spellcheck="false" autocapitalize="off" autocomplete="off"></textarea></div>
+      <div class="editor"><pre class="hl" aria-hidden="true"></pre><div class="gutter"><div class="gutter-in"></div></div><textarea spellcheck="false" autocapitalize="off" autocomplete="off"></textarea></div>
       <div class="hsplit" title="Drag to resize"></div>
       <div class="results">
         <div class="res-status toolbar"><span class="res-info muted">Run a query: ⌘↵ runs the statement under the cursor.</span><span class="grow"></span>
@@ -119,12 +119,14 @@ export class QueryTab {
           </span>
           <button class="danger apply" hidden title="Run the statement for real (no more rollback)">${icons.play}<span>Apply for real</span></button>
         </div>
+        <div class="res-script" hidden></div>
         <div class="res-body"><div class="res-grid"></div><div class="res-msg" hidden></div></div>
       </div>`;
     this.ta = this.el.querySelector("textarea");
     this.hl = this.el.querySelector(".hl");
     this.limitInput = this.el.querySelector(".limit input");
     this.schemaSel = this.el.querySelector("select.schema");
+    this.gutter = this.el.querySelector(".gutter-in");
     this.grid = new Grid(this.el.querySelector(".res-grid"), { onCellOpen: (col, v) => showValue(col, v), rowMenu: (rows) => this.rowMenu(rows) });
     this.ta.value = sql ?? "";
     this.limitInput.value = conn.rowLimit || 200;
@@ -186,6 +188,28 @@ export class QueryTab {
     ta.addEventListener("scroll", () => {
       this.hl.scrollTop = ta.scrollTop;
       this.hl.scrollLeft = ta.scrollLeft;
+      this.gutter.style.transform = `translateY(${-ta.scrollTop}px)`;
+    });
+    // The ▶ beside each statement runs that one alone.
+    this.gutter.addEventListener("mousedown", (e) => e.preventDefault()); // keeps the editor's focus and cursor
+    this.gutter.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-i]");
+      if (!b || this.running) return;
+      const st = this.gutterStatements?.[+b.dataset.i];
+      if (st) this.run(false, st.text.trim());
+    });
+    // A script's log: a click shows that statement's result, a double click selects it in the editor.
+    const scriptEl = this.el.querySelector(".res-script");
+    scriptEl.addEventListener("click", (e) => {
+      const li = e.target.closest("li[data-i]");
+      if (li) this.selectScript(+li.dataset.i);
+    });
+    scriptEl.addEventListener("dblclick", (e) => {
+      const li = e.target.closest("li[data-i]");
+      const it = li && this.scriptLog?.log[+li.dataset.i]?.it;
+      if (!it) return;
+      this.ta.focus();
+      this.ta.setSelectionRange(it.start, it.end);
     });
     ta.addEventListener("keydown", (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -240,6 +264,28 @@ export class QueryTab {
   paintEditor() {
     // The trailing newline keeps the <pre> as tall as the textarea when the text ends with one.
     this.hl.innerHTML = highlight(this.ta.value) + "\n";
+    this.paintGutter();
+  }
+
+  /** A ▶ on the first line of each statement (past leading blanks and comments). */
+  paintGutter() {
+    const value = this.ta.value;
+    const list = statements(value);
+    this.gutterStatements = list;
+    const lh = parseFloat(getComputedStyle(this.ta).lineHeight) || 19.5;
+    const html = [];
+    list.forEach((st, i) => {
+      let off = st.start;
+      for (const t of tokenize(st.text)) {
+        if (t.type !== "ws" && t.type !== "com") break;
+        off += t.text.length;
+      }
+      let line = 0;
+      for (let k = value.indexOf("\n"); k >= 0 && k < off; k = value.indexOf("\n", k + 1)) line++;
+      const head = st.text.replace(/--[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " ").trim();
+      html.push(`<button class="g-run" data-i="${i}" style="top:${8 + line * lh}px;height:${lh}px" title="Run this statement: ${esc(head.length > 80 ? head.slice(0, 80) + "…" : head)}">${icons.play}</button>`);
+    });
+    this.gutter.innerHTML = html.join("");
   }
 
   focus() {
@@ -273,6 +319,7 @@ export class QueryTab {
     const conn = this.conn;
     const sql = sqlOverride ?? this.target();
     if (!sql) return;
+    this.clearScript();
     const queryId = crypto.randomUUID();
     const limit = Number(this.limitInput.value) || conn.rowLimit || 200;
     const started = Date.now();
@@ -350,6 +397,7 @@ export class QueryTab {
     const conn = this.conn;
     const sql = sqlOverride ?? this.target();
     if (!sql) return;
+    this.clearScript();
     const queryId = crypto.randomUUID();
     const started = Date.now();
     this.running = { queryId, started };
@@ -501,7 +549,7 @@ export class QueryTab {
 
   /** Runs statements one after the other ({start, end, text} in the editor), each as its own request to the helper:
    * one confirmation for all the writes, the plan check per SELECT, stop at the first error (it's then selected in
-   * the editor). The last result set stays in the grid; the log of what ran is in the result's header. */
+   * the editor). The log of what ran is above the grid: a click on a statement shows its result. */
   async runScript(list) {
     if (this.running) return;
     const conn = this.conn;
@@ -530,7 +578,7 @@ export class QueryTab {
     const info = this.el.querySelector(".res-info");
     const started = Date.now();
     const log = [];
-    let last = null;
+    this.clearScript();
     this.script = { stopped: false };
     try {
       for (let i = 0; i < items.length; i++) {
@@ -552,8 +600,7 @@ export class QueryTab {
               { conn: wire(conn), sql: it.sql, schema: this.schema, limit, queryId, confirmed: true, planChecked },
               { timeoutMs: conn.timeoutMs + 30000 },
             );
-            log.push({ it, r });
-            if (r.columns.length || !last?.columns.length) last = r;
+            log.push({ it, r, ms: Date.now() - t0 });
             this.app.addHistory({ connId: conn.id, schema: this.schema, sql: it.sql, at: Date.now(), ms: r.elapsedMs, rows: r.rows?.length, affected: r.affectedRows });
             break;
           } catch (e) {
@@ -573,7 +620,7 @@ export class QueryTab {
               }
               e.message = "Not run: the plan looked expensive.";
             }
-            log.push({ it, error: e });
+            log.push({ it, error: e, ms: Date.now() - t0 });
             this.app.addHistory({ connId: conn.id, schema: this.schema, sql: it.sql, at: Date.now(), error: e.message });
             this.script.stopped = true;
             break;
@@ -586,44 +633,63 @@ export class QueryTab {
       this.setRunning(false);
     }
     if (!this.app.isConnected(conn.id)) this.app.schemasOf(conn.id);
-    this.showScript(log, last, Date.now() - started);
+    this.showScript(log, Date.now() - started);
   }
 
-  showScript(log, last, totalMs) {
+  showScript(log, totalMs) {
     const done = log.filter((l) => l.r).length;
-    const failed = log.find((l) => l.error);
+    const failed = log.findIndex((l) => l.error);
     const skipped = log.filter((l) => l.skipped).length;
-    // One line per statement: its first words, then what it did.
-    const line = (l) => {
+    // One line per statement: its first words, then what it did. Those that ran can be clicked.
+    const line = (l, i) => {
       const head = l.it.sql.replace(/--[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " ").trim();
       const stmt = `<code class="stmt" title="${esc(head.slice(0, 500))}">${esc(head.length > 70 ? head.slice(0, 70) + "…" : head)}</code>`;
       if (l.skipped) return `<li class="skipped"><span class="st faint">not run</span>${stmt}</li>`;
-      if (l.error) return `<li class="failed"><span class="st badge error">error</span>${stmt}<div class="err">${esc(l.error.message)}</div></li>`;
+      const tip = 'title="Click to see its result, double-click to select it in the editor"';
+      if (l.error) return `<li class="failed" data-i="${i}" ${tip}><span class="st badge error">error</span>${stmt}</li>`;
       const r = l.r;
       const what = r.columns.length
         ? `${fmtNum(r.rows.length)} row${r.rows.length === 1 ? "" : "s"}${r.truncated ? "+" : ""}`
         : `${fmtNum(r.affectedRows)} affected`;
-      return `<li><span class="st badge success">ok</span>${stmt}<span class="what">${what}</span><span class="faint">${fmtMs(r.elapsedMs)}</span></li>`;
+      return `<li data-i="${i}" ${tip}><span class="st badge success">ok</span>${stmt}<span class="what">${what}</span><span class="faint">${fmtMs(r.elapsedMs)}</span></li>`;
     };
     const summary =
-      `<span class="badge ${failed ? "error" : "success"}">${done} of ${log.length} statements run</span>` +
+      `<span class="badge ${failed >= 0 ? "error" : "success"}">${done} of ${log.length} statements run</span>` +
       (skipped ? ` <span class="faint">· ${skipped} not run</span>` : "") +
       ` <span class="faint">· ${fmtMs(totalMs)}</span>`;
-    if (failed) {
-      this.showError(failed.error, totalMs);
+    const el = this.el.querySelector(".res-script");
+    el.hidden = false;
+    el.innerHTML = `<ol class="script-log">${log.map(line).join("")}</ol>`;
+    this.scriptLog = { log, summary };
+    // First shown: the error, else the last result set, else the last statement that ran.
+    let pick = failed;
+    if (pick < 0) pick = log.findLastIndex((l) => l.r?.columns.length);
+    if (pick < 0) pick = log.findLastIndex((l) => l.r);
+    if (pick >= 0) this.selectScript(pick);
+    else this.el.querySelector(".res-info").innerHTML = summary;
+    if (failed >= 0) {
       this.ta.focus();
-      this.ta.setSelectionRange(failed.it.start, failed.it.end);
-    } else if (last) {
-      this.showResult(last, totalMs);
+      this.ta.setSelectionRange(log[failed].it.start, log[failed].it.end);
     }
+  }
+
+  /** Shows the result (or the error) of the script's statement i under its log. */
+  selectScript(i) {
+    const s = this.scriptLog;
+    const l = s?.log[i];
+    if (!l || l.skipped) return;
+    if (l.error) this.showError(l.error, l.ms);
+    else this.showResult(l.r, l.ms);
     const info = this.el.querySelector(".res-info");
-    const msg = this.el.querySelector(".res-msg");
-    info.className = "res-info";
-    info.innerHTML = summary + (!failed && last?.columns.length ? ` <span class="faint">· last result: ${fmtNum(last.rows.length)} rows</span>` : "");
-    msg.hidden = false;
-    msg.className = "res-msg notes";
-    msg.innerHTML = `<ol class="script-log">${log.map(line).join("")}</ol>`;
-    if (failed || !last?.columns.length) this.el.querySelector(".res-grid").hidden = true;
+    info.innerHTML = `${s.summary} <span class="faint">·</span> <span class="faint">#${i + 1}:</span> ${info.innerHTML}`;
+    this.el.querySelectorAll(".res-script li").forEach((li) => li.classList.toggle("selected", li.dataset.i === String(i)));
+  }
+
+  clearScript() {
+    this.scriptLog = null;
+    const el = this.el.querySelector(".res-script");
+    el.hidden = true;
+    el.innerHTML = "";
   }
 
   async stop() {
@@ -644,6 +710,7 @@ export class QueryTab {
     this.el.querySelector(".runall").hidden = on;
     if (on) this.el.querySelector(".apply").hidden = true;
     this.el.querySelector(".stop").hidden = !on;
+    this.el.querySelector(".gutter").classList.toggle("busy", on);
     this.app.tabChanged(this);
   }
 
